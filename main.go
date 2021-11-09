@@ -12,16 +12,25 @@ import (
 
 var defaultLogger *CircularLogger
 
+// LogLevel used to set the level at which output is printed to the Writer.
 type LogLevel int
 
 const (
+	// Any is not used outside of testing.
 	Any LogLevel = iota
+	// TraceLevel is the lowest log level of logging for very detailed logging when debugging.
 	TraceLevel
+	// DebugLevel is typically used when debugging
 	DebugLevel
+	// InfoLevel is used for informational messages that are important but expected
 	InfoLevel
+	// WarnLevel is used for warnings.
 	WarnLevel
+	// ErrLevel is used for non-fatal errors
 	ErrLevel
+	// FatalLevel is for fatal errors. Not really useful as a log level.
 	FatalLevel
+	// Never is not used ever.
 	Never
 	ErrorLevel   = ErrLevel
 	WarningLevel = WarnLevel
@@ -67,12 +76,16 @@ const (
 
 type logChan chan LogMessage
 
+// LogMessage contains a single log line. Timestamp is added by Chainsaw, the rest comes
+// from the user.
 type LogMessage struct {
 	Content   string
 	LogLevel  LogLevel
 	TimeStamp time.Time
 }
 
+// CircularLogger is the struct holding a chainsaw instance.
+// All state within is private and should be access through methods.
 type CircularLogger struct {
 	// at what log level should messages be printed to stdout
 	printLevel LogLevel
