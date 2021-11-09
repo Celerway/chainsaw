@@ -12,11 +12,11 @@ import (
 
 func TestLogging(t *testing.T) {
 	log := MakeLogger()
-	log.Stop()
+	defer log.Stop()
 	time.Sleep(10 * time.Millisecond)
 	is := is.New(t)
 	buffer := bytes.NewBuffer(nil)
-	log.SetOutput(buffer)
+	log.AddOutput(buffer)
 	log.Trace("Trace message")
 	log.Tracef("Tracef message: %d", 1)
 	log.Debug("Debug message")
@@ -27,7 +27,7 @@ func TestLogging(t *testing.T) {
 	log.Warnf("Warnf message: %d", 1)
 	log.Error("Error message")
 	log.Errorf("Errorf message: %d", 1)
-	log.SetOutput(os.Stdout)
+	log.AddOutput(os.Stdout)
 	b := buffer.Bytes()
 	is.True(bytes.Contains(b, []byte("Trace message")))
 	is.True(bytes.Contains(b, []byte("Tracef message: 1")))
@@ -39,7 +39,41 @@ func TestLogging(t *testing.T) {
 	is.True(bytes.Contains(b, []byte("Warnf message: 1")))
 	is.True(bytes.Contains(b, []byte("Error message")))
 	is.True(bytes.Contains(b, []byte("Errorf message: 1")))
-	log.Stop()
+}
+
+// same as above, but with the default logger.
+func TestLogging2(t *testing.T) {
+	defer Stop()
+	is := is.New(t)
+	buffer := bytes.NewBuffer(nil)
+	AddOutput(buffer)
+	Trace("Trace message")
+	Tracef("Tracef message: %d", 1)
+	Debug("Debug message")
+	Debugf("Debugf message: %d", 1)
+	Info("Info message")
+	Infof("Infof message: %d", 1)
+	Warn("Warn message")
+	Warnf("Warnf message: %d", 1)
+	Error("Error message")
+	Errorf("Errorf message: %d", 1)
+	RemoveWriter(buffer)
+	Error("XXX message")
+	Errorf("XXXf message: %d", 1)
+	b := buffer.Bytes()
+	is.True(bytes.Contains(b, []byte("Trace message")))
+	is.True(bytes.Contains(b, []byte("Tracef message: 1")))
+	is.True(bytes.Contains(b, []byte("Debug message")))
+	is.True(bytes.Contains(b, []byte("Debugf message: 1")))
+	is.True(bytes.Contains(b, []byte("Info message")))
+	is.True(bytes.Contains(b, []byte("Infof message: 1")))
+	is.True(bytes.Contains(b, []byte("Warn message")))
+	is.True(bytes.Contains(b, []byte("Warnf message: 1")))
+	is.True(bytes.Contains(b, []byte("Error message")))
+	is.True(bytes.Contains(b, []byte("Errorf message: 1")))
+	is.True(!bytes.Contains(b, []byte("XXX message")))
+	is.True(!bytes.Contains(b, []byte("XXXf message: 1")))
+
 }
 
 func TestDump(t *testing.T) {
@@ -115,28 +149,52 @@ func TestStream(t *testing.T) {
 
 	}(ctx, stream)
 	log.Infof("Hello there, will fire off %d trace messages.", noOfMessages)
-	for i := 0; i < 20; i++ {
+	for i := 0; i < noOfMessages; i++ {
 		testLogger.Tracef("Trace message %d/%d", i, noOfMessages)
 	}
 	log.Info("Done")
-	time.Sleep(time.Second)
+	// Wait a bit for noOfMessages to get right.
+	for i := 0; i < 1000; i++ {
+		time.Sleep(1 * time.Millisecond)
+		if streamedMessages == noOfMessages {
+			break
+		}
+	}
 	cancel()
 	is := is.New(t)
 	is.Equal(streamedMessages, noOfMessages) // Compare the number of messages stream to what we sent.
-	// l := GetLogger()
-	// msgs := l.GetMessages(TraceLevel)
-	// Infof("Got %d messages", len(msgs))
 }
 
 func TestQuit(t *testing.T) {
 	log := MakeLogger()
-	defer log.Stop()
-
+	time.Sleep(10 * time.Millisecond)
 	is := is.New(t)
 	log.Info("test message")
+	is.True(log.GetStatus()) // Goroutine should be running here.
 
 	log.Stop()
 	time.Sleep(10 * time.Millisecond)
-	status := log.GetStatus()
-	is.True(!status)
+	is.True(!log.GetStatus()) // Goroutine should be stopped here.
+}
+
+func TestManyLoggers(t *testing.T) {
+	const many = 10
+	is := is.New(t)
+	loggers := make([]*CircularLogger, 10)
+
+	for i := 0; i < many; i++ {
+		loggers[i] = MakeLogger()
+	}
+
+	for i := 0; i < 1000; i++ {
+		for l, logger := range loggers {
+			logger.Tracef("Message %d on logger %d", i, l)
+		}
+	}
+	for i, logger := range loggers {
+		msgs := logger.GetMessages(TraceLevel)
+		m := msgs[0]
+		is.Equal(fmt.Sprintf("Message %d on logger %d", 850, i), m.content)
+	}
+
 }
