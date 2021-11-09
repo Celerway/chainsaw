@@ -3,6 +3,7 @@ package chainsaw
 import (
 	"fmt"
 	"io"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -30,7 +31,7 @@ func init() {
 	defaultLogger = MakeLogger(30, 10)
 }
 
-var Levels = []string{"Any", "trace", "debug", "info", "warn", "error", "fatal", "never"}
+var Levels = []string{"any", "trace", "debug", "info", "warn", "error", "fatal", "never"}
 
 func (l LogLevel) String() string {
 	return Levels[l]
@@ -92,6 +93,10 @@ type CircularLogger struct {
 }
 
 func (l *CircularLogger) log(level LogLevel, m string) {
+	if l.GetStatus() == false {
+		// If the logger is down we will deadlock quickly and nobody wants that.
+		panic("chainsaw panic: Logging goroutine is stopped")
+	}
 	t := time.Now()
 	logM := LogMessage{
 		Content:   m,
@@ -103,10 +108,10 @@ func (l *CircularLogger) log(level LogLevel, m string) {
 
 // channelHandler run whenever the logger has been used.
 // this is the main goroutine where everything happens
-func (l *CircularLogger) channelHandler() {
+func (l *CircularLogger) channelHandler(wg *sync.WaitGroup) {
 	l.running.Set(true)
+	wg.Done()
 	for {
-		// fmt.Println("Waiting for log or control message.")
 		select {
 		case cMessage := <-l.controlCh:
 			switch cMessage.cType {
@@ -124,12 +129,11 @@ func (l *CircularLogger) channelHandler() {
 				l.running.Set(false)
 				return // ends the goroutine.
 			case ctrlAddWriter:
-				fmt.Println("Adding writer")
 				l.addWriter(cMessage.newWriter)
 			case ctrlRemoveWriter:
 				l.removeWriter(cMessage.newWriter)
 			case ctrlSetLogLevel:
-				l.SetLevel(cMessage.level)
+				l.setLevel(cMessage.level)
 			default:
 				panic("unknown control message")
 			}
@@ -212,8 +216,5 @@ func (b *atomicBool) Set(value bool) {
 }
 
 func (b *atomicBool) Get() bool {
-	if atomic.LoadInt32(&(b.flag)) != 0 {
-		return true
-	}
-	return false
+	return atomic.LoadInt32(&(b.flag)) != 0
 }

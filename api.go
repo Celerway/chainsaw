@@ -5,8 +5,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 )
 
+// MakeLogger creates a new logger instance. Params:
+// logBufferSize - the size of the circular buffer
+// chanBufferSize - how big the channels buffers should be
 func MakeLogger(logBufferSize, chanBufferSize int) *CircularLogger {
 	c := CircularLogger{
 		printLevel:     InfoLevel, // this is the default printlevel.
@@ -19,13 +23,15 @@ func MakeLogger(logBufferSize, chanBufferSize int) *CircularLogger {
 		chanBufferSize: chanBufferSize,
 		outputWriters:  []io.Writer{os.Stdout},
 	}
-	go c.channelHandler()
+	wg := sync.WaitGroup{} // Waits for the goroutine to start.
+	wg.Add(1)
+	go c.channelHandler(&wg)
+	wg.Wait()
 	return &c
 }
 
-// Stop
-// goroutine which handles the log channel
-// Things will deadlock if you log while it is down.
+// Stop the goroutine which handles the log channel.
+// Things might deadlock if you log while it is down.
 func (l *CircularLogger) Stop() {
 	if l.running.Get() {
 		cMsg := controlMessage{
@@ -37,11 +43,7 @@ func (l *CircularLogger) Stop() {
 	}
 }
 
-func Stop() {
-	l := defaultLogger
-	l.Stop()
-}
-
+// Reset the circular buffer of the logger. Flush the logs.
 func (l *CircularLogger) Reset() {
 	cMsg := controlMessage{
 		cType: crtlRst,
@@ -49,6 +51,7 @@ func (l *CircularLogger) Reset() {
 	l.controlCh <- cMsg // We don't expect a reply.
 }
 
+// Reset the default loggers buffer.
 func Reset() {
 	l := defaultLogger
 	l.Reset()
@@ -77,11 +80,14 @@ func (l *CircularLogger) GetStream(ctx context.Context) chan LogMessage {
 	return ch
 }
 
+// GetStream creates a stream (channel) from the default logger. The channel MUST be serviced
+// or the logger will lock up.
 func GetStream(ctx context.Context) chan LogMessage {
 	l := defaultLogger
 	return l.GetStream(ctx)
 }
 
+// GetMessages fetches the messages currently in the circular buffer.
 func (l *CircularLogger) GetMessages(level LogLevel) []LogMessage {
 	retCh := make(chan []LogMessage, l.chanBufferSize)
 	cMsg := controlMessage{
@@ -95,16 +101,21 @@ func (l *CircularLogger) GetMessages(level LogLevel) []LogMessage {
 	return ret
 }
 
+// GetMessages fetches the messages currently in the circular buffer.
 func GetMessages(level LogLevel) []LogMessage {
 	l := defaultLogger
 	return l.GetMessages(level)
 }
 
+// SetLevel sets the log level. This affects if messages are printed to
+// the outputs or not.
 func SetLevel(level LogLevel) {
 	l := defaultLogger
 	l.SetLevel(level)
 }
 
+// SetLevel sets the log level. This affects if messages are printed to
+// the outputs or not.
 func (l *CircularLogger) SetLevel(level LogLevel) {
 	cMsg := controlMessage{
 		cType: ctrlSetLogLevel,
@@ -113,6 +124,9 @@ func (l *CircularLogger) SetLevel(level LogLevel) {
 	l.controlCh <- cMsg
 }
 
+// AddOutput takes a io.Writer and will copy log messages here going forward
+// Note that it does not check if the Writer is already here. Copying os.Stdout
+// will result in all messages being printed twice.
 func (l *CircularLogger) AddOutput(o io.Writer) {
 	cMsg := controlMessage{
 		cType:     ctrlAddWriter,
@@ -121,11 +135,16 @@ func (l *CircularLogger) AddOutput(o io.Writer) {
 	l.controlCh <- cMsg // Requesting messages over control channel
 }
 
+// AddOutput takes a io.Writer and will copy log messages here going forward
+// Note that it does not check if the Writer is already here. Copying os.Stdout
+// will result in all messages being printed twice.
 func AddOutput(o io.Writer) {
 	l := defaultLogger
 	l.AddOutput(o)
 }
 
+// RemoveWriter removes the io.Writer from the logger.
+// if the Writer isn't there nothing happens.
 func (l *CircularLogger) RemoveWriter(o io.Writer) {
 	cMsg := controlMessage{
 		cType:     ctrlRemoveWriter,
@@ -134,12 +153,14 @@ func (l *CircularLogger) RemoveWriter(o io.Writer) {
 	l.controlCh <- cMsg
 }
 
+// RemoveWriter removes the io.Writer from the logger.
+// if the Writer isn't there nothing happens.
 func RemoveWriter(o io.Writer) {
 	l := defaultLogger
 	l.RemoveWriter(o)
 }
 
-// GetStatus is somewhat unsafe. There is no locking here, and we peek into the internals.
+// GetStatus returns true if the logger goroutine is running.
 func (l *CircularLogger) GetStatus() bool {
 	return l.running.Get()
 }

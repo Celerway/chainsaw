@@ -65,4 +65,3 @@ thousands of messages per second you might wanna do something else.
 
 * Increase compatibility with other logging libraries.
 * Consider making the control messages synchronous.
-* Remove race condition. These are not critical but it looks bad.

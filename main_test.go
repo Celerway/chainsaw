@@ -13,8 +13,8 @@ import (
 
 const (
 	defaultLogBufferSize  = 50
-	defaultChanBufferSize = 0                     // In tests we run with unbuffered channels to detect deadlocks.
-	defaultSleepTime      = 10 * time.Millisecond // The default sleep time to let the logger finish its async work.
+	defaultChanBufferSize = 0                    // In tests we run with unbuffered channels to detect deadlocks.
+	defaultSleepTime      = 1 * time.Millisecond // The default sleep time to let the logger finish its async work.
 )
 
 func TestLogging(t *testing.T) {
@@ -22,7 +22,6 @@ func TestLogging(t *testing.T) {
 	defer log.Stop()
 	time.Sleep(10 * time.Millisecond)
 	is := is.New(t)
-	// buffer := bytes.NewBuffer(nil)
 	buffer := &SafeBuffer{}
 	log.AddOutput(buffer)
 	time.Sleep(defaultSleepTime)
@@ -52,6 +51,8 @@ func TestLogging(t *testing.T) {
 
 // TestRemoveWriter uses the default logger instance.
 func TestRemoveWriter(t *testing.T) {
+	Reset()
+	SetLevel(InfoLevel)
 	buffer := &SafeBuffer{}
 	// buffer := bytes.NewBuffer(nil)
 	AddOutput(buffer)
@@ -66,13 +67,16 @@ func TestRemoveWriter(t *testing.T) {
 	Error("Error message")
 	Errorf("Errorf message: %d", 1)
 	time.Sleep(defaultSleepTime)
+	is := is.New(t)
+	is.Equal(len(GetMessages(InfoLevel)), 6)
+	is.Equal(len(GetMessages(WarnLevel)), 4)
+	is.Equal(len(GetMessages(ErrorLevel)), 2)
 	RemoveWriter(buffer)
 	time.Sleep(defaultSleepTime)
 	Error("XXX message")
 	Errorf("XXXf message: %d", 1)
 	time.Sleep(defaultSleepTime)
 	bufferBytes := buffer.Bytes()
-	is := is.New(t)
 	is.True(!bytes.Contains(bufferBytes, []byte("Trace message")))
 	is.True(!bytes.Contains(bufferBytes, []byte("Tracef message: 1")))
 	is.True(!bytes.Contains(bufferBytes, []byte("Debug message")))
@@ -255,25 +259,21 @@ type SafeBuffer struct {
 func (b *SafeBuffer) Read(p []byte) (n int, err error) {
 	b.m.Lock()
 	defer b.m.Unlock()
-	fmt.Println("Safe buffer read")
 	return b.b.Read(p)
 }
 func (b *SafeBuffer) Write(p []byte) (n int, err error) {
 	b.m.Lock()
 	defer b.m.Unlock()
-	fmt.Println("Safe buffer write")
 	return b.b.Write(p)
 }
 func (b *SafeBuffer) String() string {
 	b.m.Lock()
 	defer b.m.Unlock()
-	fmt.Println("Safe buffer string")
 	return b.b.String()
 }
 
 func (b *SafeBuffer) Bytes() []byte {
 	b.m.Lock()
 	defer b.m.Unlock()
-	fmt.Println("Safe buffer Bytes")
 	return b.b.Bytes()
 }
