@@ -19,6 +19,7 @@ func MakeLogger() *CircularLogger {
 		outputWriters: make([]io.Writer, 0),
 	}
 	c.AddOutput(os.Stdout)
+	c.SetLevel(InfoLevel)
 	go c.channelHandler()
 	return &c
 }
