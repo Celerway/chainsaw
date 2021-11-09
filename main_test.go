@@ -120,7 +120,7 @@ func TestDumpLimited(t *testing.T) {
 	msgs := log.GetMessages(InfoLevel)
 	fmt.Printf("Got %d messages from the log system\n", len(msgs))
 	for _, msg := range msgs {
-		fmt.Printf("DUMP: %s\n", msg.content)
+		fmt.Printf("DUMP: %s\n", msg.Content)
 	}
 }
 
@@ -142,7 +142,7 @@ func TestStream(t *testing.T) {
 				fmt.Println("Breaking out inner loop")
 				break loop
 			case msg := <-s:
-				fmt.Printf("STREAM: %s|%s|%s\n", msg.timeStamp.Format(time.RFC3339), msg.loglevel, msg.content)
+				fmt.Printf("STREAM: %s|%s|%s\n", msg.TimeStamp.Format(time.RFC3339), msg.LogLevel, msg.Content)
 				streamedMessages++
 			}
 		}
@@ -194,7 +194,7 @@ func TestManyLoggers(t *testing.T) {
 	for i, logger := range loggers {
 		msgs := logger.GetMessages(TraceLevel)
 		m := msgs[0]
-		is.Equal(fmt.Sprintf("Message %d on logger %d", 850, i), m.content)
+		is.Equal(fmt.Sprintf("Message %d on logger %d", 850, i), m.Content)
 	}
 
 }

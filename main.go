@@ -70,9 +70,9 @@ const (
 type logChan chan LogMessage
 
 type LogMessage struct {
-	content   string
-	loglevel  LogLevel
-	timeStamp time.Time
+	Content   string
+	LogLevel  LogLevel
+	TimeStamp time.Time
 }
 
 type CircularLogger struct {
@@ -106,9 +106,9 @@ func (l *CircularLogger) log(level LogLevel, m string) {
 		}
 	}
 	logm := LogMessage{
-		content:   m,
-		loglevel:  level,
-		timeStamp: t,
+		Content:   m,
+		LogLevel:  level,
+		TimeStamp: t,
 	}
 	l.logCh <- logm
 }
@@ -183,7 +183,7 @@ func (l *CircularLogger) getMessageOverCh(level LogLevel) []LogMessage {
 	buf := make([]LogMessage, 0)
 	for i := l.current; i < l.current+l.len; i++ {
 		msg := l.messages[i%l.len]
-		if msg.loglevel < level {
+		if msg.LogLevel < level {
 			continue
 		}
 		buf = append(buf, msg)
