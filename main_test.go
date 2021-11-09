@@ -6,14 +6,15 @@ import (
 	"fmt"
 	"github.com/matryer/is"
 	"os"
+	"sync"
 	"testing"
 	"time"
 )
 
 const (
 	defaultLogBufferSize  = 50
-	defaultChanBufferSize = 0                    // In tests we run with unbuffered channels to detect deadlocks.
-	defaultSleepTime      = 1 * time.Millisecond // The default sleep time to let the logger finish its async work.
+	defaultChanBufferSize = 0                     // In tests we run with unbuffered channels to detect deadlocks.
+	defaultSleepTime      = 10 * time.Millisecond // The default sleep time to let the logger finish its async work.
 )
 
 func TestLogging(t *testing.T) {
@@ -21,7 +22,8 @@ func TestLogging(t *testing.T) {
 	defer log.Stop()
 	time.Sleep(10 * time.Millisecond)
 	is := is.New(t)
-	buffer := bytes.NewBuffer(nil)
+	// buffer := bytes.NewBuffer(nil)
+	buffer := &SafeBuffer{}
 	log.AddOutput(buffer)
 	time.Sleep(defaultSleepTime)
 	log.Trace("Trace message")
@@ -50,11 +52,9 @@ func TestLogging(t *testing.T) {
 
 // TestRemoveWriter uses the default logger instance.
 func TestRemoveWriter(t *testing.T) {
-	defer Stop()
-	is := is.New(t)
-	buffer := bytes.NewBuffer(nil)
+	buffer := &SafeBuffer{}
+	// buffer := bytes.NewBuffer(nil)
 	AddOutput(buffer)
-	time.Sleep(defaultSleepTime)
 	Trace("Trace message")
 	Tracef("Tracef message: %d", 1)
 	Debug("Debug message")
@@ -65,12 +65,14 @@ func TestRemoveWriter(t *testing.T) {
 	Warnf("Warnf message: %d", 1)
 	Error("Error message")
 	Errorf("Errorf message: %d", 1)
+	time.Sleep(defaultSleepTime)
 	RemoveWriter(buffer)
 	time.Sleep(defaultSleepTime)
 	Error("XXX message")
 	Errorf("XXXf message: %d", 1)
 	time.Sleep(defaultSleepTime)
 	bufferBytes := buffer.Bytes()
+	is := is.New(t)
 	is.True(!bytes.Contains(bufferBytes, []byte("Trace message")))
 	is.True(!bytes.Contains(bufferBytes, []byte("Tracef message: 1")))
 	is.True(!bytes.Contains(bufferBytes, []byte("Debug message")))
@@ -156,11 +158,12 @@ func TestStream(t *testing.T) {
 	streamCtx, streamCancel := context.WithCancel(context.Background())
 
 	stream := testLogger.GetStream(streamCtx)
-	streamedMessages := 0
+	streamedMessages := SafeInt{}
+
 	go func(streamCh chan LogMessage) {
 		for msg := range streamCh {
 			fmt.Printf("STREAM: %s|%s|%s\n", msg.TimeStamp.Format(time.RFC3339), msg.LogLevel, msg.Content)
-			streamedMessages++
+			streamedMessages.Inc()
 		}
 	}(stream)
 	log.Infof("Hello there, will fire off %d trace messages.", noOfMessages)
@@ -171,18 +174,18 @@ func TestStream(t *testing.T) {
 	// Wait a bit for noOfMessages to get right.
 	for i := 0; i < 1000; i++ {
 		time.Sleep(1 * time.Millisecond)
-		if streamedMessages == noOfMessages {
+		if streamedMessages.Get() == noOfMessages {
 			break
 		}
 	}
 	is := is.New(t)
-	is.Equal(streamedMessages, noOfMessages) // Compare the number of messages stream to what we sent.
-	streamCancel()                           // Cancel the stream. This should force the above goroutine to exit.
+	is.Equal(streamedMessages.Get(), noOfMessages) // Compare the number of messages stream to what we sent.
+	streamCancel()                                 // Cancel the stream. This should force the above goroutine to exit.
 	time.Sleep(defaultSleepTime)
 	for i := 0; i < noOfMessages; i++ {
 		testLogger.Tracef("Messages not hitting the stream %d/%d", i, noOfMessages)
 	}
-	is.Equal(streamedMessages, noOfMessages) // Compare the number of messages stream to what we sent.
+	is.Equal(streamedMessages.Get(), noOfMessages) // Compare the number of messages stream to what we sent.
 }
 
 func TestQuit(t *testing.T) {
@@ -222,4 +225,55 @@ func TestManyLoggers(t *testing.T) {
 		is.Equal(fmt.Sprintf("Message %d on logger %d", messagesPerLogger-logBufferSize, i), m.Content)
 	}
 
+}
+
+func BenchmarkLogger(b *testing.B) {
+	Error("This is just an error message")
+}
+
+type SafeInt struct {
+	value int
+	m     sync.Mutex
+}
+
+func (i *SafeInt) Inc() {
+	i.m.Lock()
+	defer i.m.Unlock()
+	i.value++
+}
+func (i *SafeInt) Get() int {
+	i.m.Lock()
+	defer i.m.Unlock()
+	return i.value
+}
+
+type SafeBuffer struct {
+	b bytes.Buffer
+	m sync.Mutex
+}
+
+func (b *SafeBuffer) Read(p []byte) (n int, err error) {
+	b.m.Lock()
+	defer b.m.Unlock()
+	fmt.Println("Safe buffer read")
+	return b.b.Read(p)
+}
+func (b *SafeBuffer) Write(p []byte) (n int, err error) {
+	b.m.Lock()
+	defer b.m.Unlock()
+	fmt.Println("Safe buffer write")
+	return b.b.Write(p)
+}
+func (b *SafeBuffer) String() string {
+	b.m.Lock()
+	defer b.m.Unlock()
+	fmt.Println("Safe buffer string")
+	return b.b.String()
+}
+
+func (b *SafeBuffer) Bytes() []byte {
+	b.m.Lock()
+	defer b.m.Unlock()
+	fmt.Println("Safe buffer Bytes")
+	return b.b.Bytes()
 }

@@ -3,6 +3,7 @@ package chainsaw
 import (
 	"fmt"
 	"io"
+	"sync/atomic"
 	"time"
 )
 
@@ -53,13 +54,14 @@ type controlMessage struct {
 type controlChannel chan controlMessage
 
 const (
-	controlDump controlType = iota + 1
-	controlReset
-	controlQuit
-	controlAddOutputChan
-	controlRemoveOutputChan
-	controlAddWriter
-	controlRemoveWriter
+	ctrlDump controlType = iota + 1
+	crtlRst
+	crtlQuit
+	ctrlAddOutputChan
+	ctrlRemoveOutputChan
+	ctrlAddWriter
+	ctrlRemoveWriter
+	ctrlSetLogLevel
 )
 
 type logChan chan LogMessage
@@ -85,22 +87,12 @@ type CircularLogger struct {
 	current        int
 	logBufferSize  int
 	outputWriters  []io.Writer
-	running        bool
+	running        atomicBool
 	chanBufferSize int
 }
 
 func (l *CircularLogger) log(level LogLevel, m string) {
 	t := time.Now()
-	tStr := t.Format("2006-01-02T15:04:05-0700")
-	if level >= l.printLevel {
-		str := fmt.Sprintf("%s: [%s] %s\n", tStr, level.String(), m)
-		for _, output := range l.outputWriters {
-			_, err := io.WriteString(output, str) // Should we check for a short write?
-			if err != nil {
-				fmt.Printf("Internal error in chainsaw: Can't write to outputWriter: %s", err)
-			}
-		}
-	}
 	logM := LogMessage{
 		Content:   m,
 		LogLevel:  level,
@@ -112,33 +104,37 @@ func (l *CircularLogger) log(level LogLevel, m string) {
 // channelHandler run whenever the logger has been used.
 // this is the main goroutine where everything happens
 func (l *CircularLogger) channelHandler() {
-	l.running = true
+	l.running.Set(true)
 	for {
 		// fmt.Println("Waiting for log or control message.")
 		select {
 		case cMessage := <-l.controlCh:
 			switch cMessage.cType {
-			case controlAddOutputChan:
+			case ctrlAddOutputChan:
 				l.addOutputChan(cMessage.outputCh)
-			case controlRemoveOutputChan:
+			case ctrlRemoveOutputChan:
 				l.removeOutputChan(cMessage.outputCh)
-			case controlDump:
+			case ctrlDump:
 				buf := l.getMessageOverCh(cMessage.level)
 				cMessage.returnChan <- buf
-			case controlReset:
+			case crtlRst:
 				l.current = 0
 				l.messages = make([]LogMessage, l.logBufferSize)
-			case controlQuit:
-				l.running = false
+			case crtlQuit:
+				l.running.Set(false)
 				return // ends the goroutine.
-			case controlAddWriter:
+			case ctrlAddWriter:
+				fmt.Println("Adding writer")
 				l.addWriter(cMessage.newWriter)
-			case controlRemoveWriter:
+			case ctrlRemoveWriter:
 				l.removeWriter(cMessage.newWriter)
+			case ctrlSetLogLevel:
+				l.SetLevel(cMessage.level)
 			default:
 				panic("unknown control message")
 			}
 		case msg := <-l.logCh:
+			l.handleLogOutput(msg)
 			l.messages[l.current] = msg
 			l.current = (l.current + 1) % l.logBufferSize
 			for _, ch := range l.outputChs {
@@ -146,6 +142,20 @@ func (l *CircularLogger) channelHandler() {
 			}
 		}
 	}
+}
+
+func (l *CircularLogger) handleLogOutput(m LogMessage) {
+	tStr := m.TimeStamp.Format("2006-01-02T15:04:05-0700")
+	if m.LogLevel >= l.printLevel {
+		str := fmt.Sprintf("%s: [%s] %s\n", tStr, m.LogLevel.String(), m.Content)
+		for _, output := range l.outputWriters {
+			_, err := io.WriteString(output, str) // Should we check for a short write?
+			if err != nil {
+				fmt.Printf("Internal error in chainsaw: Can't write to outputWriter: %s", err)
+			}
+		}
+	}
+
 }
 
 func (l *CircularLogger) addOutputChan(ch logChan) {
@@ -185,4 +195,25 @@ func (l *CircularLogger) getMessageOverCh(level LogLevel) []LogMessage {
 		buf = append(buf, msg)
 	}
 	return buf
+}
+
+func (l *CircularLogger) setLevel(level LogLevel) {
+	l.printLevel = level
+}
+
+type atomicBool struct{ flag int32 }
+
+func (b *atomicBool) Set(value bool) {
+	var i int32 = 0
+	if value {
+		i = 1
+	}
+	atomic.StoreInt32(&(b.flag), int32(i))
+}
+
+func (b *atomicBool) Get() bool {
+	if atomic.LoadInt32(&(b.flag)) != 0 {
+		return true
+	}
+	return false
 }

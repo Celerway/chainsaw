@@ -17,9 +17,8 @@ func MakeLogger(logBufferSize, chanBufferSize int) *CircularLogger {
 		current:        0,
 		logBufferSize:  logBufferSize,
 		chanBufferSize: chanBufferSize,
-		outputWriters:  make([]io.Writer, 0),
+		outputWriters:  []io.Writer{os.Stdout},
 	}
-	c.AddOutput(os.Stdout)
 	go c.channelHandler()
 	return &c
 }
@@ -28,9 +27,9 @@ func MakeLogger(logBufferSize, chanBufferSize int) *CircularLogger {
 // goroutine which handles the log channel
 // Things will deadlock if you log while it is down.
 func (l *CircularLogger) Stop() {
-	if l.running {
+	if l.running.Get() {
 		cMsg := controlMessage{
-			cType: controlQuit,
+			cType: crtlQuit,
 		}
 		l.controlCh <- cMsg // We don't expect a reply.
 	} else {
@@ -45,7 +44,7 @@ func Stop() {
 
 func (l *CircularLogger) Reset() {
 	cMsg := controlMessage{
-		cType: controlReset,
+		cType: crtlRst,
 	}
 	l.controlCh <- cMsg // We don't expect a reply.
 }
@@ -61,7 +60,7 @@ func Reset() {
 func (l *CircularLogger) GetStream(ctx context.Context) chan LogMessage {
 	ch := make(chan LogMessage, l.chanBufferSize)
 	cMessage := controlMessage{
-		cType:      controlAddOutputChan,
+		cType:      ctrlAddOutputChan,
 		returnChan: nil,
 		outputCh:   ch,
 	}
@@ -69,7 +68,7 @@ func (l *CircularLogger) GetStream(ctx context.Context) chan LogMessage {
 	go func(outputCh chan LogMessage) {
 		<-ctx.Done()
 		cMessage := controlMessage{
-			cType:      controlRemoveOutputChan,
+			cType:      ctrlRemoveOutputChan,
 			returnChan: nil,
 			outputCh:   outputCh,
 		}
@@ -86,7 +85,7 @@ func GetStream(ctx context.Context) chan LogMessage {
 func (l *CircularLogger) GetMessages(level LogLevel) []LogMessage {
 	retCh := make(chan []LogMessage, l.chanBufferSize)
 	cMsg := controlMessage{
-		cType:      controlDump,
+		cType:      ctrlDump,
 		returnChan: retCh,
 		level:      level,
 		outputCh:   nil,
@@ -107,12 +106,16 @@ func SetLevel(level LogLevel) {
 }
 
 func (l *CircularLogger) SetLevel(level LogLevel) {
-	l.printLevel = level
+	cMsg := controlMessage{
+		cType: ctrlSetLogLevel,
+		level: level,
+	}
+	l.controlCh <- cMsg
 }
 
 func (l *CircularLogger) AddOutput(o io.Writer) {
 	cMsg := controlMessage{
-		cType:     controlAddWriter,
+		cType:     ctrlAddWriter,
 		newWriter: o,
 	}
 	l.controlCh <- cMsg // Requesting messages over control channel
@@ -125,7 +128,7 @@ func AddOutput(o io.Writer) {
 
 func (l *CircularLogger) RemoveWriter(o io.Writer) {
 	cMsg := controlMessage{
-		cType:     controlRemoveWriter,
+		cType:     ctrlRemoveWriter,
 		newWriter: o,
 	}
 	l.controlCh <- cMsg
@@ -138,5 +141,5 @@ func RemoveWriter(o io.Writer) {
 
 // GetStatus is somewhat unsafe. There is no locking here, and we peek into the internals.
 func (l *CircularLogger) GetStatus() bool {
-	return l.running
+	return l.running.Get()
 }
