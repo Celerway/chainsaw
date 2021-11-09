@@ -12,10 +12,6 @@ var defaultLogger *CircularLogger
 
 type LogLevel int
 
-var bufferSize = 150
-
-const chanBufferSize = 30
-
 const (
 	Any LogLevel = iota
 	TraceLevel
@@ -30,7 +26,7 @@ const (
 )
 
 func init() {
-	defaultLogger = MakeLogger()
+	defaultLogger = MakeLogger(30, 10)
 }
 
 var Levels = []string{"Any", "trace", "debug", "info", "warn", "error", "fatal", "never"}
@@ -85,11 +81,12 @@ type CircularLogger struct {
 	// if a stream has been requested it is added here.
 	outputChs []logChan
 	// controlCh is the internal channel that is used for control messages.
-	controlCh     controlChannel
-	current       int
-	len           int
-	outputWriters []io.Writer
-	running       bool
+	controlCh      controlChannel
+	current        int
+	logBufferSize  int
+	outputWriters  []io.Writer
+	running        bool
+	chanBufferSize int
 }
 
 func (l *CircularLogger) log(level LogLevel, m string) {
@@ -130,7 +127,7 @@ func (l *CircularLogger) channelHandler() {
 				cMessage.returnChan <- buf
 			case controlReset:
 				l.current = 0
-				l.messages = make([]LogMessage, bufferSize)
+				l.messages = make([]LogMessage, l.logBufferSize)
 			case controlQuit:
 				l.running = false
 				return // ends the goroutine.
@@ -143,7 +140,7 @@ func (l *CircularLogger) channelHandler() {
 			}
 		case msg := <-l.logCh:
 			l.messages[l.current] = msg
-			l.current = (l.current + 1) % l.len
+			l.current = (l.current + 1) % l.logBufferSize
 			for _, ch := range l.outputChs {
 				ch <- msg
 			}
@@ -157,9 +154,10 @@ func (l *CircularLogger) addOutputChan(ch logChan) {
 
 func (l *CircularLogger) removeOutputChan(ch logChan) {
 	for i, outputCh := range l.outputChs {
-		if outputCh != ch {
+		if outputCh == ch {
 			l.outputChs[i] = l.outputChs[len(l.outputChs)-1]
 			l.outputChs = l.outputChs[:len(l.outputChs)-1]
+			close(ch)
 		}
 	}
 }
@@ -179,8 +177,8 @@ func (l *CircularLogger) removeWriter(o io.Writer) {
 
 func (l *CircularLogger) getMessageOverCh(level LogLevel) []LogMessage {
 	buf := make([]LogMessage, 0)
-	for i := l.current; i < l.current+l.len; i++ {
-		msg := l.messages[i%l.len]
+	for i := l.current; i < l.current+l.logBufferSize; i++ {
+		msg := l.messages[i%l.logBufferSize]
 		if msg.LogLevel < level {
 			continue
 		}

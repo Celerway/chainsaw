@@ -7,16 +7,17 @@ import (
 	"os"
 )
 
-func MakeLogger() *CircularLogger {
+func MakeLogger(logBufferSize, chanBufferSize int) *CircularLogger {
 	c := CircularLogger{
-		printLevel:    InfoLevel, // this is the default printlevel.
-		messages:      make([]LogMessage, bufferSize),
-		logCh:         make(logChan, chanBufferSize),
-		outputChs:     make([]logChan, 0),
-		controlCh:     make(controlChannel, chanBufferSize),
-		current:       0,
-		len:           bufferSize,
-		outputWriters: make([]io.Writer, 0),
+		printLevel:     InfoLevel, // this is the default printlevel.
+		messages:       make([]LogMessage, logBufferSize),
+		logCh:          make(logChan, chanBufferSize),
+		outputChs:      make([]logChan, 0),
+		controlCh:      make(controlChannel, 10), // Control buffer must be buffered.
+		current:        0,
+		logBufferSize:  logBufferSize,
+		chanBufferSize: chanBufferSize,
+		outputWriters:  make([]io.Writer, 0),
 	}
 	c.AddOutput(os.Stdout)
 	go c.channelHandler()
@@ -58,7 +59,7 @@ func Reset() {
 // Log messages will be streamed on this channel. The channel MUST
 // be serviced or the logger will lock up.
 func (l *CircularLogger) GetStream(ctx context.Context) chan LogMessage {
-	ch := make(chan LogMessage, chanBufferSize)
+	ch := make(chan LogMessage, l.chanBufferSize)
 	cMessage := controlMessage{
 		cType:      controlAddOutputChan,
 		returnChan: nil,
@@ -73,7 +74,6 @@ func (l *CircularLogger) GetStream(ctx context.Context) chan LogMessage {
 			outputCh:   outputCh,
 		}
 		l.controlCh <- cMessage
-		close(outputCh) // Close the channel so any readers know that it is closed.
 	}(ch)
 	return ch
 }
@@ -84,7 +84,7 @@ func GetStream(ctx context.Context) chan LogMessage {
 }
 
 func (l *CircularLogger) GetMessages(level LogLevel) []LogMessage {
-	retCh := make(chan []LogMessage, chanBufferSize)
+	retCh := make(chan []LogMessage, l.chanBufferSize)
 	cMsg := controlMessage{
 		cType:      controlDump,
 		returnChan: retCh,
