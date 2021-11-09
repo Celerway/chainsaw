@@ -37,7 +37,6 @@ var Levels = []string{"Any", "trace", "debug", "info", "warn", "error", "fatal",
 
 func (l LogLevel) String() string {
 	return Levels[l]
-	//return [...]string{"Any", "trace", "debug", "info", "warn", "error", "fatal", "never"}[l]
 }
 
 type controlType int
@@ -51,7 +50,7 @@ type controlMessage struct {
 	cType      controlType
 	returnChan chan []LogMessage // channel for dumps of messages
 	level      LogLevel
-	output     chan LogMessage
+	outputCh   chan LogMessage
 	newWriter  io.Writer
 }
 
@@ -59,10 +58,10 @@ type controlChannel chan controlMessage
 
 const (
 	controlDump controlType = iota + 1
-	controlAddOutput
-	controlRemoveOutput
 	controlReset
 	controlQuit
+	controlAddOutputChan
+	controlRemoveOutputChan
 	controlAddWriter
 	controlRemoveWriter
 )
@@ -82,9 +81,9 @@ type CircularLogger struct {
 	messages []LogMessage
 	// logChan Messages are send over this channel to the log worker.
 	logCh logChan
-	// outputs is a list of channels that messages are copied onto when they arrive
+	// outputChs is a list of channels that messages are copied onto when they arrive
 	// if a stream has been requested it is added here.
-	outputs []logChan
+	outputChs []logChan
 	// controlCh is the internal channel that is used for control messages.
 	controlCh     controlChannel
 	current       int
@@ -99,18 +98,18 @@ func (l *CircularLogger) log(level LogLevel, m string) {
 	if level >= l.printLevel {
 		str := fmt.Sprintf("%s: [%s] %s\n", tStr, level.String(), m)
 		for _, output := range l.outputWriters {
-			_, err := io.WriteString(output, str)
+			_, err := io.WriteString(output, str) // Should we check for a short write?
 			if err != nil {
 				fmt.Printf("Internal error in chainsaw: Can't write to outputWriter: %s", err)
 			}
 		}
 	}
-	logm := LogMessage{
+	logM := LogMessage{
 		Content:   m,
 		LogLevel:  level,
 		TimeStamp: t,
 	}
-	l.logCh <- logm
+	l.logCh <- logM
 }
 
 // channelHandler run whenever the logger has been used.
@@ -122,10 +121,10 @@ func (l *CircularLogger) channelHandler() {
 		select {
 		case cMessage := <-l.controlCh:
 			switch cMessage.cType {
-			case controlAddOutput:
-				l.addOutputChan(cMessage.output)
-			case controlRemoveOutput:
-				l.removeOutputChan(cMessage.output)
+			case controlAddOutputChan:
+				l.addOutputChan(cMessage.outputCh)
+			case controlRemoveOutputChan:
+				l.removeOutputChan(cMessage.outputCh)
 			case controlDump:
 				buf := l.getMessageOverCh(cMessage.level)
 				cMessage.returnChan <- buf
@@ -145,7 +144,7 @@ func (l *CircularLogger) channelHandler() {
 		case msg := <-l.logCh:
 			l.messages[l.current] = msg
 			l.current = (l.current + 1) % l.len
-			for _, ch := range l.outputs {
+			for _, ch := range l.outputChs {
 				ch <- msg
 			}
 		}
@@ -153,17 +152,16 @@ func (l *CircularLogger) channelHandler() {
 }
 
 func (l *CircularLogger) addOutputChan(ch logChan) {
-	l.outputs = append(l.outputs, ch)
+	l.outputChs = append(l.outputChs, ch)
 }
 
 func (l *CircularLogger) removeOutputChan(ch logChan) {
-	newoutput := make([]logChan, 0)
-	for _, outputCh := range l.outputs {
+	for i, outputCh := range l.outputChs {
 		if outputCh != ch {
-			newoutput = append(newoutput, outputCh)
+			l.outputChs[i] = l.outputChs[len(l.outputChs)-1]
+			l.outputChs = l.outputChs[:len(l.outputChs)-1]
 		}
 	}
-	l.outputs = newoutput
 }
 
 func (l *CircularLogger) addWriter(o io.Writer) {
