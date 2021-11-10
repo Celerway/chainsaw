@@ -36,6 +36,8 @@ const (
 	WarningLevel = WarnLevel
 )
 
+// init() runs when the library is imported. It will start a logger
+// so the library can be used without initializing a custom logger.
 func init() {
 	defaultLogger = MakeLogger(30, 10)
 }
@@ -56,6 +58,7 @@ type controlType int
 type controlMessage struct {
 	cType      controlType
 	returnChan chan []LogMessage // channel for dumps of messages
+	errChan    chan error        // Used for acks
 	level      LogLevel
 	outputCh   chan LogMessage
 	newWriter  io.Writer
@@ -72,6 +75,7 @@ const (
 	ctrlAddWriter
 	ctrlRemoveWriter
 	ctrlSetLogLevel
+	ctrlFlush
 )
 
 type logChan chan LogMessage
@@ -106,7 +110,7 @@ type CircularLogger struct {
 }
 
 func (l *CircularLogger) log(level LogLevel, m string) {
-	if l.GetStatus() == false {
+	if !l.GetStatus() {
 		// If the logger is down we will deadlock quickly and nobody wants that.
 		panic("chainsaw panic: Logging goroutine is stopped")
 	}
@@ -123,30 +127,31 @@ func (l *CircularLogger) log(level LogLevel, m string) {
 // this is the main goroutine where everything happens
 func (l *CircularLogger) channelHandler(wg *sync.WaitGroup) {
 	l.running.Set(true)
-	wg.Done()
+	wg.Done() // Signal back that the goroutine is running and the channel is serviced.
 	for {
 		select {
 		case cMessage := <-l.controlCh:
 			switch cMessage.cType {
 			case ctrlAddOutputChan:
-				l.addOutputChan(cMessage.outputCh)
+				cMessage.errChan <- l.addOutputChan(cMessage.outputCh)
 			case ctrlRemoveOutputChan:
-				l.removeOutputChan(cMessage.outputCh)
+				cMessage.errChan <- l.removeOutputChan(cMessage.outputCh)
 			case ctrlDump:
-				buf := l.getMessageOverCh(cMessage.level)
-				cMessage.returnChan <- buf
+				cMessage.returnChan <- l.getMessageOverCh(cMessage.level)
 			case crtlRst:
-				l.current = 0
-				l.messages = make([]LogMessage, l.logBufferSize)
+				cMessage.errChan <- l.handleReset()
 			case crtlQuit:
 				l.running.Set(false)
+				cMessage.errChan <- nil
 				return // ends the goroutine.
 			case ctrlAddWriter:
-				l.addWriter(cMessage.newWriter)
+				cMessage.errChan <- l.addWriter(cMessage.newWriter)
 			case ctrlRemoveWriter:
-				l.removeWriter(cMessage.newWriter)
+				cMessage.errChan <- l.removeWriter(cMessage.newWriter)
 			case ctrlSetLogLevel:
-				l.setLevel(cMessage.level)
+				cMessage.errChan <- l.setLevel(cMessage.level)
+			case ctrlFlush:
+				cMessage.errChan <- nil // Flush is always a success
 			default:
 				panic("unknown control message")
 			}
@@ -155,8 +160,10 @@ func (l *CircularLogger) channelHandler(wg *sync.WaitGroup) {
 			l.messages[l.current] = msg
 			l.current = (l.current + 1) % l.logBufferSize
 			for _, ch := range l.outputChs {
+				// println("sending to channel ", i, msg.Content)
 				ch <- msg
 			}
+
 		}
 	}
 }
@@ -172,36 +179,77 @@ func (l *CircularLogger) handleLogOutput(m LogMessage) {
 			}
 		}
 	}
-
 }
 
-func (l *CircularLogger) addOutputChan(ch logChan) {
-	l.outputChs = append(l.outputChs, ch)
+func (l *CircularLogger) handleReset() error {
+	l.current = 0
+	l.messages = make([]LogMessage, l.logBufferSize)
+	return nil
 }
 
-func (l *CircularLogger) removeOutputChan(ch logChan) {
-	for i, outputCh := range l.outputChs {
+func (l *CircularLogger) addOutputChan(ch logChan) error {
+	found := false
+	for _, outputCh := range l.outputChs {
 		if outputCh == ch {
-			l.outputChs[i] = l.outputChs[len(l.outputChs)-1]
-			l.outputChs = l.outputChs[:len(l.outputChs)-1]
-			close(ch)
+			found = true
 		}
+	}
+	if !found {
+		l.outputChs = append(l.outputChs, ch)
+		return nil
+	} else {
+		return fmt.Errorf("output channel already added to the logger")
 	}
 }
 
-func (l *CircularLogger) addWriter(o io.Writer) {
-	l.outputWriters = append(l.outputWriters, o)
+func (l *CircularLogger) removeOutputChan(ch logChan) error {
+	found := false
+	for i, outputCh := range l.outputChs {
+		if outputCh == ch {
+			found = true
+			l.outputChs[i] = l.outputChs[len(l.outputChs)-1] // Take the last element and put it at the place we've found
+			l.outputChs = l.outputChs[:len(l.outputChs)-1]   // shrink the slice.
+			close(ch)                                        // close the channel so the listener will be notified.
+		}
+	}
+	if !found {
+		return fmt.Errorf("output channel not found")
+	}
+	return nil
 }
 
-func (l *CircularLogger) removeWriter(o io.Writer) {
+func (l *CircularLogger) addWriter(o io.Writer) error {
+	found := false
+	for _, writer := range l.outputWriters {
+		if writer == o {
+			found = true
+		}
+	}
+	if !found {
+		l.outputWriters = append(l.outputWriters, o)
+		return nil
+	} else {
+		return fmt.Errorf("writer already present in logger: %v", o)
+	}
+}
+
+func (l *CircularLogger) removeWriter(o io.Writer) error {
+	found := false
 	for i, wr := range l.outputWriters {
 		if o == wr {
+			found = true
 			l.outputWriters[i] = l.outputWriters[len(l.outputWriters)-1]
 			l.outputWriters = l.outputWriters[:len(l.outputWriters)-1]
 		}
 	}
+	if !found {
+		return fmt.Errorf("writer not found in logger: %v", o)
+	}
+	return nil
 }
 
+// Perhaps it would be more efficient to stream these over a channel instead.
+// However, in terms of allocation this will do one big allocation and not many smaller ones.
 func (l *CircularLogger) getMessageOverCh(level LogLevel) []LogMessage {
 	buf := make([]LogMessage, 0)
 	for i := l.current; i < l.current+l.logBufferSize; i++ {
@@ -214,8 +262,18 @@ func (l *CircularLogger) getMessageOverCh(level LogLevel) []LogMessage {
 	return buf
 }
 
-func (l *CircularLogger) setLevel(level LogLevel) {
+func (l *CircularLogger) setLevel(level LogLevel) error {
 	l.printLevel = level
+	return nil
+}
+
+// sendCtrlAndWait is used to send a message on the control channel
+// and return the error back. This keeps the API calls cleaner.
+func (l *CircularLogger) sendCtrlAndWait(ctrlMsg controlMessage) error {
+	errCh := make(chan error, 1)
+	ctrlMsg.errChan = errCh // mutate the struct a bit.
+	l.controlCh <- ctrlMsg
+	return <-errCh // Return the error returned by the logger goroutine.
 }
 
 type atomicBool struct{ flag int32 }

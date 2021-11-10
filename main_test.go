@@ -17,10 +17,33 @@ const (
 	defaultSleepTime      = 1 * time.Millisecond // The default sleep time to let the logger finish its async work.
 )
 
+func TestLoggingPerformance(t *testing.T) {
+	const runs = 200000
+	log := MakeLogger(defaultLogBufferSize, defaultChanBufferSize)
+	log.RemoveWriter(os.Stdout) // Reduce noise.
+	start := time.Now()
+	for i := 0; i < runs; i++ {
+		log.Debug("Dummy message")
+	}
+	dur := time.Since(start)
+	avg := dur / runs
+	fmt.Printf("Duration per logging invokation: %v\n", avg)
+	is := is.New(t)
+	is.True(avg < time.Millisecond) // If we spend more than a millisecond something must be wrong.
+
+	start = time.Now()
+	for i := 0; i < runs; i++ {
+		_ = log.Flush()
+	}
+	dur = time.Since(start)
+	avg = dur / runs
+	fmt.Printf("Duration per flush invokation: %v\n", avg)
+	is.True(avg < time.Millisecond) // If we spend more than a millisecond something must be wrong.
+}
+
 func TestLogging(t *testing.T) {
 	log := MakeLogger(defaultLogBufferSize, defaultChanBufferSize)
 	defer log.Stop()
-	time.Sleep(10 * time.Millisecond)
 	is := is.New(t)
 	buffer := &SafeBuffer{}
 	log.AddOutput(buffer)
@@ -131,12 +154,13 @@ func TestDumpLimited(t *testing.T) {
 	const logBufferSize = 10
 	const logBufferOverrun = logBufferSize * 2
 	log := MakeLogger(logBufferSize, defaultChanBufferSize)
+	log.RemoveWriter(os.Stdout)
 	defer log.Stop()
-	Infof("Hello there, will fire off %d trace messages.", logBufferSize)
+	fmt.Printf("Generating %d trace messages...\n", logBufferSize)
 	for i := 0; i < logBufferSize; i++ {
 		log.Tracef("Trace message %d/%d", i, defaultLogBufferSize)
 	}
-	log.Infof("Will fire off %d info messages, overrunning the buffer", logBufferOverrun)
+	fmt.Println("overrunning the buffer")
 	for i := 0; i < logBufferOverrun; i++ {
 		log.Infof("Info message %d", i)
 	}
@@ -147,51 +171,118 @@ func TestDumpLimited(t *testing.T) {
 	for i, m := range msgs {
 		is.Equal(fmt.Sprintf("Info message %d", i+logBufferSize), m.Content)
 	}
-
+	fmt.Println("Validated log content")
 }
 
+// Create a stream and do various verifications that it works.
 func TestStream(t *testing.T) {
 	const noOfMessages = 20
-	testLogger := MakeLogger(defaultLogBufferSize, defaultChanBufferSize)
+	testLogger := MakeLogger(defaultLogBufferSize, 0) // Use zero buffer to provoke races.
 	testLogger.SetLevel(TraceLevel)
+	testLogger.RemoveWriter(os.Stdout) // reduce console noise.
 	defer testLogger.Stop()
 
-	log := MakeLogger(defaultLogBufferSize, defaultChanBufferSize)
-	defer log.Stop()
-
+	// The ctx we pass into getstream to stop it.
 	streamCtx, streamCancel := context.WithCancel(context.Background())
-
 	stream := testLogger.GetStream(streamCtx)
 	streamedMessages := SafeInt{}
-
+	is := is.New(t)
+	wg := sync.WaitGroup{}
+	wg.Add(1)
 	go func(streamCh chan LogMessage) {
 		for msg := range streamCh {
-			fmt.Printf("STREAM: %s|%s|%s\n", msg.TimeStamp.Format(time.RFC3339), msg.LogLevel, msg.Content)
+			fmt.Print(".")
+			is.Equal(msg.LogLevel, TraceLevel) // Verify that these are debug messages.
+			// And verify the content:
+			is.Equal(fmt.Sprintf("Trace message %d/%d", streamedMessages.Get(), noOfMessages), msg.Content)
 			streamedMessages.Inc()
 		}
+		wg.Done()
+		fmt.Println("streamer done. Messages verified.")
 	}(stream)
-	log.Infof("Hello there, will fire off %d trace messages.", noOfMessages)
+	fmt.Printf("Hello there, will fire off %d trace messages\n", noOfMessages)
 	for i := 0; i < noOfMessages; i++ {
 		testLogger.Tracef("Trace message %d/%d", i, noOfMessages)
 	}
-	log.Info("Done")
-	// Wait a bit for noOfMessages to get right.
-	for i := 0; i < 1000; i++ {
-		time.Sleep(1 * time.Millisecond)
-		if streamedMessages.Get() == noOfMessages {
-			break
-		}
-	}
-	is := is.New(t)
-	is.Equal(streamedMessages.Get(), noOfMessages) // Compare the number of messages stream to what we sent.
 	streamCancel()                                 // Cancel the stream. This should force the above goroutine to exit.
-	time.Sleep(defaultSleepTime)
+	wg.Wait()                                      // Wait for the streamer to exit.
+	is.Equal(streamedMessages.Get(), noOfMessages) // Compare the number of messages stream to what we sent.
+	fmt.Println("Will issue more messages that will not hit the stream")
 	for i := 0; i < noOfMessages; i++ {
-		testLogger.Tracef("Messages not hitting the stream %d/%d", i, noOfMessages)
+		testLogger.Infof("Messages not hitting the stream %d/%d", i, noOfMessages)
 	}
 	is.Equal(streamedMessages.Get(), noOfMessages) // Compare the number of messages stream to what we sent.
+	is.Equal(len(testLogger.GetMessages(InfoLevel)), noOfMessages)
+	fmt.Println("Stream test passed")
 }
 
+func handleStream(stream chan LogMessage, counter *SafeInt, wg *sync.WaitGroup) {
+	for range stream {
+		counter.Inc()
+	}
+	wg.Done()
+}
+
+// TestMultipleStreams
+// Create a logger. Connect X stream to it. Log Y messages.
+// See that the number of messages reaching the streams is X * Y
+func TestMultipleStreams(t *testing.T) {
+	const noOfMessages = 20
+	const noOfStreams = 10
+	testLogger := MakeLogger(defaultLogBufferSize, 0) // Use zero buffer to provoke races.
+	testLogger.SetLevel(TraceLevel)
+	testLogger.RemoveWriter(os.Stdout) // reduce console noise.
+
+	ctx, cancel := context.WithCancel(context.Background())
+	wg := sync.WaitGroup{}
+	counter := &SafeInt{}
+	wg.Add(noOfStreams)
+	for i := 0; i < noOfStreams; i++ {
+		go handleStream(testLogger.GetStream(ctx), counter, &wg)
+	}
+	for i := 0; i < noOfMessages; i++ {
+		testLogger.Trace("trace message")
+	}
+	cancel()
+	wg.Wait() // Wait for the handleStream goroutines to finish.
+	is := is.New(t)
+	is.Equal(counter.Get(), noOfStreams*noOfMessages)
+	println("Done")
+}
+
+func TestStreamRace(t *testing.T) {
+	const noOfLoggers = 20
+	const noOfMessages = 100
+	wg := sync.WaitGroup{}
+	wg.Add(noOfLoggers)
+	ctx, cancel := context.WithCancel(context.Background())
+	messagesStreamed := SafeInt{}
+
+	for i := 0; i < noOfLoggers; i++ {
+		go func() {
+			logger := MakeLogger(10, 0)
+			stream := logger.GetStream(ctx)
+			go func(streamCh chan LogMessage) {
+				for range streamCh {
+					fmt.Print(".")
+					messagesStreamed.Inc()
+				}
+				wg.Done()
+			}(stream)
+			for j := 0; j < noOfMessages; j++ {
+				logger.Tracef("trace message")
+			}
+			logger.Flush()
+		}()
+	}
+	// We've pushed a lot of messages into the logger. Let's cancel the context.
+	cancel()
+	wg.Wait()
+
+	is := is.New(t)
+	is.True(messagesStreamed.Get() > 10)
+	fmt.Printf("\nNo of messages reaching the streams:%d\n", messagesStreamed.Get())
+}
 func TestQuit(t *testing.T) {
 	log := MakeLogger(defaultLogBufferSize, defaultChanBufferSize)
 	time.Sleep(defaultSleepTime)
@@ -228,6 +319,20 @@ func TestManyLoggers(t *testing.T) {
 		m := msgs[0]
 		is.Equal(fmt.Sprintf("Message %d on logger %d", messagesPerLogger-logBufferSize, i), m.Content)
 	}
+	for _, logger := range loggers {
+		logger.Stop()
+	}
+	fmt.Println("Done")
+}
+
+func TestOutput(t *testing.T) {
+	testLogger := MakeLogger(10, 0)
+	is := is.New(t)
+	err := testLogger.RemoveWriter(os.Stdout)
+	is.NoErr(err)
+	err = testLogger.RemoveWriter(os.Stdout)
+	is.True(err != nil)
+	fmt.Println("err as expected", err.Error())
 
 }
 
@@ -237,7 +342,7 @@ func BenchmarkLogger(b *testing.B) {
 
 type SafeInt struct {
 	value int
-	m     sync.Mutex
+	m     sync.RWMutex
 }
 
 func (i *SafeInt) Inc() {
@@ -246,8 +351,8 @@ func (i *SafeInt) Inc() {
 	i.value++
 }
 func (i *SafeInt) Get() int {
-	i.m.Lock()
-	defer i.m.Unlock()
+	i.m.RLock()
+	defer i.m.RUnlock()
 	return i.value
 }
 

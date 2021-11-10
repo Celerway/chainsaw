@@ -37,7 +37,7 @@ func (l *CircularLogger) Stop() {
 		cMsg := controlMessage{
 			cType: crtlQuit,
 		}
-		l.controlCh <- cMsg // We don't expect a reply.
+		_ = l.sendCtrlAndWait(cMsg)
 	} else {
 		fmt.Printf("Error! Stop called on a passive logger")
 	}
@@ -48,7 +48,7 @@ func (l *CircularLogger) Reset() {
 	cMsg := controlMessage{
 		cType: crtlRst,
 	}
-	l.controlCh <- cMsg // We don't expect a reply.
+	_ = l.sendCtrlAndWait(cMsg)
 }
 
 // Reset the default loggers buffer.
@@ -61,23 +61,25 @@ func Reset() {
 // Log messages will be streamed on this channel. The channel MUST
 // be serviced or the logger will lock up.
 func (l *CircularLogger) GetStream(ctx context.Context) chan LogMessage {
-	ch := make(chan LogMessage, l.chanBufferSize)
-	cMessage := controlMessage{
-		cType:      ctrlAddOutputChan,
-		returnChan: nil,
-		outputCh:   ch,
-	}
-	l.controlCh <- cMessage
+	/*
+		There is a race condition here. What happens is:
+		ctx is cancelled.
+		We send the control message then we get blocked --> deadlock.
+
+	*/
+	// Make the channel we're gonna return.
+	retCh := make(chan LogMessage, l.chanBufferSize)
+	cMessage := controlMessage{cType: ctrlAddOutputChan, outputCh: retCh}
+	_ = l.sendCtrlAndWait(cMessage)
 	go func(outputCh chan LogMessage) {
 		<-ctx.Done()
-		cMessage := controlMessage{
-			cType:      ctrlRemoveOutputChan,
-			returnChan: nil,
-			outputCh:   outputCh,
+		cMessage := controlMessage{cType: ctrlRemoveOutputChan, outputCh: outputCh}
+		err := l.sendCtrlAndWait(cMessage) // waits for the response.
+		if err != nil {
+			fmt.Println("chainsaw internal error in GetStream():", err.Error())
 		}
-		l.controlCh <- cMessage
-	}(ch)
-	return ch
+	}(retCh)
+	return retCh
 }
 
 // GetStream creates a stream (channel) from the default logger. The channel MUST be serviced
@@ -121,46 +123,50 @@ func (l *CircularLogger) SetLevel(level LogLevel) {
 		cType: ctrlSetLogLevel,
 		level: level,
 	}
-	l.controlCh <- cMsg
+	_ = l.sendCtrlAndWait(cMsg)
 }
 
 // AddOutput takes a io.Writer and will copy log messages here going forward
-// Note that it does not check if the Writer is already here. Copying os.Stdout
-// will result in all messages being printed twice.
-func (l *CircularLogger) AddOutput(o io.Writer) {
+// If it already exists an error is returned.
+func (l *CircularLogger) AddOutput(o io.Writer) error {
 	cMsg := controlMessage{
 		cType:     ctrlAddWriter,
 		newWriter: o,
 	}
-	l.controlCh <- cMsg // Requesting messages over control channel
+	return l.sendCtrlAndWait(cMsg)
 }
 
 // AddOutput takes a io.Writer and will copy log messages here going forward
-// Note that it does not check if the Writer is already here. Copying os.Stdout
-// will result in all messages being printed twice.
-func AddOutput(o io.Writer) {
+// If it already exists an error is returned.
+func AddOutput(o io.Writer) error {
 	l := defaultLogger
-	l.AddOutput(o)
+	return l.AddOutput(o)
 }
 
 // RemoveWriter removes the io.Writer from the logger.
-// if the Writer isn't there nothing happens.
-func (l *CircularLogger) RemoveWriter(o io.Writer) {
+// if the Writer isn't there an error is returned
+func (l *CircularLogger) RemoveWriter(o io.Writer) error {
 	cMsg := controlMessage{
 		cType:     ctrlRemoveWriter,
 		newWriter: o,
 	}
-	l.controlCh <- cMsg
+	return l.sendCtrlAndWait(cMsg)
 }
 
 // RemoveWriter removes the io.Writer from the logger.
-// if the Writer isn't there nothing happens.
-func RemoveWriter(o io.Writer) {
+// if the Writer isn't there an error is returned
+func RemoveWriter(o io.Writer) error {
 	l := defaultLogger
-	l.RemoveWriter(o)
+	return l.RemoveWriter(o)
 }
 
 // GetStatus returns true if the logger goroutine is running.
 func (l *CircularLogger) GetStatus() bool {
 	return l.running.Get()
+}
+
+// Flush
+func (l *CircularLogger) Flush() error {
+	cMsg := controlMessage{cType: ctrlFlush}
+	return l.sendCtrlAndWait(cMsg)
 }
