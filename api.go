@@ -126,9 +126,9 @@ func (l *CircularLogger) SetLevel(level LogLevel) {
 	_ = l.sendCtrlAndWait(cMsg)
 }
 
-// AddOutput takes a io.Writer and will copy log messages here going forward
+// AddWriter takes a io.Writer and will copy log messages here going forward
 // If it already exists an error is returned.
-func (l *CircularLogger) AddOutput(o io.Writer) error {
+func (l *CircularLogger) AddWriter(o io.Writer) error {
 	cMsg := controlMessage{
 		cType:     ctrlAddWriter,
 		newWriter: o,
@@ -136,11 +136,11 @@ func (l *CircularLogger) AddOutput(o io.Writer) error {
 	return l.sendCtrlAndWait(cMsg)
 }
 
-// AddOutput takes a io.Writer and will copy log messages here going forward
+// AddWriter takes a io.Writer and will copy log messages here going forward
 // If it already exists an error is returned.
-func AddOutput(o io.Writer) error {
+func AddWriter(o io.Writer) error {
 	l := defaultLogger
-	return l.AddOutput(o)
+	return l.AddWriter(o)
 }
 
 // RemoveWriter removes the io.Writer from the logger.

@@ -18,7 +18,8 @@ const (
 )
 
 func TestLoggingPerformance(t *testing.T) {
-	const runs = 200000
+	const runs = 20000
+	const timeout = 3 * time.Millisecond
 	log := MakeLogger(defaultLogBufferSize, defaultChanBufferSize)
 	log.RemoveWriter(os.Stdout) // Reduce noise.
 	start := time.Now()
@@ -29,8 +30,7 @@ func TestLoggingPerformance(t *testing.T) {
 	avg := dur / runs
 	fmt.Printf("Duration per logging invokation: %v\n", avg)
 	is := is.New(t)
-	is.True(avg < time.Millisecond) // If we spend more than a millisecond something must be wrong.
-
+	is.True(avg < timeout) // Check if we are somewhat performant.
 	start = time.Now()
 	for i := 0; i < runs; i++ {
 		_ = log.Flush()
@@ -38,7 +38,7 @@ func TestLoggingPerformance(t *testing.T) {
 	dur = time.Since(start)
 	avg = dur / runs
 	fmt.Printf("Duration per flush invokation: %v\n", avg)
-	is.True(avg < time.Millisecond) // If we spend more than a millisecond something must be wrong.
+	is.True(avg < timeout) // Check if we are somewhat performant.
 }
 
 func TestLogging(t *testing.T) {
@@ -46,8 +46,10 @@ func TestLogging(t *testing.T) {
 	defer log.Stop()
 	is := is.New(t)
 	buffer := &SafeBuffer{}
-	log.AddOutput(buffer)
-	time.Sleep(defaultSleepTime)
+	err := log.AddWriter(buffer)
+	is.NoErr(err)
+	err = log.RemoveWriter(os.Stdout)
+	is.NoErr(err)
 	log.Trace("Trace message")
 	log.Tracef("Tracef message: %d", 1)
 	log.Debug("Debug message")
@@ -58,6 +60,7 @@ func TestLogging(t *testing.T) {
 	log.Warnf("Warnf message: %d", 1)
 	log.Error("Error message")
 	log.Errorf("Errorf message: %d", 1)
+	log.Flush()
 	time.Sleep(defaultSleepTime)
 	b := buffer.Bytes()
 	is.True(!bytes.Contains(b, []byte("Trace message")))
@@ -78,7 +81,8 @@ func TestRemoveWriter(t *testing.T) {
 	SetLevel(InfoLevel)
 	buffer := &SafeBuffer{}
 	// buffer := bytes.NewBuffer(nil)
-	AddOutput(buffer)
+	AddWriter(buffer)
+	RemoveWriter(os.Stdout)
 	Trace("Trace message")
 	Tracef("Tracef message: %d", 1)
 	Debug("Debug message")
@@ -297,17 +301,22 @@ func TestQuit(t *testing.T) {
 
 func TestManyLoggers(t *testing.T) {
 	const (
-		many              = 10
+		noOfLoggers       = 10
 		messagesPerLogger = 1000
 		logBufferSize     = 10
 	)
-
+	fmt.Printf("Running %d loggers with %d logbuffersize and %d messages per logger\n", noOfLoggers, logBufferSize, messagesPerLogger)
 	is := is.New(t)
 	loggers := make([]*CircularLogger, 10)
 
-	for i := 0; i < many; i++ {
+	for i := 0; i < noOfLoggers; i++ {
 		loggers[i] = MakeLogger(logBufferSize, defaultChanBufferSize)
 	}
+	defer func() {
+		for _, logger := range loggers {
+			logger.Stop()
+		}
+	}()
 
 	for i := 0; i < messagesPerLogger; i++ {
 		for l, logger := range loggers {
@@ -318,9 +327,6 @@ func TestManyLoggers(t *testing.T) {
 		msgs := logger.GetMessages(TraceLevel)
 		m := msgs[0]
 		is.Equal(fmt.Sprintf("Message %d on logger %d", messagesPerLogger-logBufferSize, i), m.Content)
-	}
-	for _, logger := range loggers {
-		logger.Stop()
 	}
 	fmt.Println("Done")
 }
