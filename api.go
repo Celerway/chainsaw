@@ -8,11 +8,28 @@ import (
 	"sync"
 )
 
-// MakeLogger creates a new logger instance. Params:
+const (
+	defaultLogBufferSize  = 50
+	defaultChanBufferSize = 10
+)
+
+// MakeLogger creates a new logger instance.
+// Params:
+// Mandatory is name, can be empty.
+// In addition you can supply two ints:
 // logBufferSize - the size of the circular buffer
 // chanBufferSize - how big the channels buffers should be
-func MakeLogger(logBufferSize, chanBufferSize int) *CircularLogger {
+func MakeLogger(name string, options ...int) *CircularLogger {
+	logBufferSize := defaultLogBufferSize
+	chanBufferSize := defaultChanBufferSize
+	if len(options) > 1 {
+		logBufferSize = options[0]
+	}
+	if len(options) > 2 {
+		chanBufferSize = options[1]
+	}
 	c := CircularLogger{
+		name:           name,
 		printLevel:     InfoLevel, // this is the default printlevel.
 		messages:       make([]LogMessage, logBufferSize),
 		logCh:          make(logChan, chanBufferSize),
@@ -165,8 +182,14 @@ func (l *CircularLogger) GetStatus() bool {
 	return l.running.Get()
 }
 
-// Flush
+// Flush sends a no-op message and waits for the reply. This flushes the
+// buffers.
 func (l *CircularLogger) Flush() error {
 	cMsg := controlMessage{cType: ctrlFlush}
 	return l.sendCtrlAndWait(cMsg)
+}
+
+func (m LogMessage) String() string {
+	tStr := m.TimeStamp.Format("2006-01-02T15:04:05-0700")
+	return fmt.Sprintf("%s: [%s] %s\n", tStr, m.LogLevel.String(), m.Content)
 }

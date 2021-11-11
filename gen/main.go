@@ -16,7 +16,6 @@ import (
 
 type LogFunction struct {
 	Level string
-	Fatal bool
 }
 
 type LogTemplate struct {
@@ -66,13 +65,11 @@ import (
 func (l *CircularLogger) {{.Level}}(v ...interface{}) {
 	s := fmt.Sprint(v...)
 	l.log({{.Level}}Level, s)
-	{{ if .Fatal }}os.Exit(1){{end}}
 }
 
 func (l *CircularLogger) {{.Level}}f(f string,v ...interface{}) {
 	s := fmt.Sprintf(f, v...)
 	l.log({{.Level}}Level, s)
-	{{ if .Fatal }}os.Exit(1){{end}}
 }
 
 func {{.Level}}(v ...interface{}) {

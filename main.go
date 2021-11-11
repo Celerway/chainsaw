@@ -3,6 +3,7 @@ package chainsaw
 import (
 	"fmt"
 	"io"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -39,7 +40,7 @@ const (
 // init() runs when the library is imported. It will start a logger
 // so the library can be used without initializing a custom logger.
 func init() {
-	defaultLogger = MakeLogger(30, 10)
+	defaultLogger = MakeLogger("", 30, 10)
 }
 
 var Levels = []string{"any", "trace", "debug", "info", "warn", "error", "fatal", "never"}
@@ -91,6 +92,8 @@ type LogMessage struct {
 // CircularLogger is the struct holding a chainsaw instance.
 // All state within is private and should be access through methods.
 type CircularLogger struct {
+	// The name gets  into all the loglines.
+	name string
 	// at what log level should messages be printed to stdout
 	printLevel LogLevel
 	// messages is the internal log buffer keeping the last messages in a circular buffer
@@ -163,6 +166,10 @@ func (l *CircularLogger) channelHandler(wg *sync.WaitGroup) {
 				// println("sending to channel ", i, msg.Content)
 				ch <- msg
 			}
+			if msg.LogLevel == FatalLevel {
+				fmt.Println("[chainsaw causing exit]")
+				os.Exit(1)
+			}
 
 		}
 	}
@@ -170,8 +177,12 @@ func (l *CircularLogger) channelHandler(wg *sync.WaitGroup) {
 
 func (l *CircularLogger) handleLogOutput(m LogMessage) {
 	tStr := m.TimeStamp.Format("2006-01-02T15:04:05-0700")
+	var nameStr string
+	if l.name != "" {
+		nameStr = fmt.Sprintf("/%s", l.name)
+	}
 	if m.LogLevel >= l.printLevel {
-		str := fmt.Sprintf("%s: [%s] %s\n", tStr, m.LogLevel.String(), m.Content)
+		str := fmt.Sprintf("%s%s: [%s] %s\n", tStr, nameStr, m.LogLevel.String(), m.Content)
 		for _, output := range l.outputWriters {
 			_, err := io.WriteString(output, str) // Should we check for a short write?
 			if err != nil {
