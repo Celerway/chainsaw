@@ -65,3 +65,7 @@ On my laptop a regular log invocation takes about 600ns and control messages tak
 ## Todo:
 
 * Increase compatibility with other logging libraries.
+* Add support for formatting
+* Consider trying to detect blocked channels when GetStream is being used.
+* Documentation, at least when we're somewhat certain that the basic design is sane.
+* Adapt a logging interface. Shame there isn't one in Stdlib.
