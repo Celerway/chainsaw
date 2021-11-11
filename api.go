@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 )
 
@@ -52,7 +53,7 @@ func MakeLogger(name string, options ...int) *CircularLogger {
 func (l *CircularLogger) Stop() {
 	if l.running.Get() {
 		cMsg := controlMessage{
-			cType: crtlQuit,
+			cType: ctrlQuit,
 		}
 		_ = l.sendCtrlAndWait(cMsg)
 	} else {
@@ -63,7 +64,7 @@ func (l *CircularLogger) Stop() {
 // Reset the circular buffer of the logger. Flush the logs.
 func (l *CircularLogger) Reset() {
 	cMsg := controlMessage{
-		cType: crtlRst,
+		cType: ctrlRst,
 	}
 	_ = l.sendCtrlAndWait(cMsg)
 }
@@ -191,5 +192,29 @@ func (l *CircularLogger) Flush() error {
 
 func (m LogMessage) String() string {
 	tStr := m.TimeStamp.Format("2006-01-02T15:04:05-0700")
-	return fmt.Sprintf("%s: [%s] %s\n", tStr, m.LogLevel.String(), m.Content)
+	return fmt.Sprintf("%s: [%s] %s", tStr, m.LogLevel.String(), m.Content)
+}
+
+func GetLevels() []LogLevel {
+	levels := make([]LogLevel, FatalLevel)
+	for l := TraceLevel; l < FatalLevel; l++ {
+		levels[l] = l
+	}
+	return levels
+}
+
+func ParseLogLevel(s string) LogLevel {
+	level := InfoLevel
+	s = strings.ToLower(s)
+	if !strings.HasSuffix(s, "level") {
+		s = s + "level"
+	}
+	for l := TraceLevel; l <= FatalLevel; l++ {
+		cmpLevel := strings.ToLower(l.String())
+		if cmpLevel == s {
+			level = l
+			break
+		}
+	}
+	return level
 }

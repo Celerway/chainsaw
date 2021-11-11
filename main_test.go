@@ -19,9 +19,19 @@ const (
 
 func TestDemo(t *testing.T) {
 	logger := MakeLogger("test")
-	logger.Info("This message is an info message")
+	logger.Trace("trace")
+	logger.Debug("debug")
+	logger.Info("info")
+	logger.Warn("warn")
+	logger.Error("error")
+
 	// 2021-11-11T08:19:42+0100/test: [info] This message is an info message
 	logger.Flush()
+	msgs := logger.GetMessages(TraceLevel)
+	for _, msg := range msgs {
+		fmt.Println(msg.String())
+	}
+	logger.Stop()
 }
 
 func TestLoggingPerformance(t *testing.T) {
@@ -142,6 +152,7 @@ func TestDumpMessages(t *testing.T) {
 		log.Errorf("Error message %d", i)
 		counted += 5
 	}
+	log.Flush()
 	time.Sleep(defaultSleepTime) // Sleep a few ms while the logs get to the right place.
 	fmt.Printf("Generated %d messages\n", counted)
 	msgTrace := log.GetMessages(TraceLevel)
@@ -352,10 +363,6 @@ func TestOutput(t *testing.T) {
 	err = testLogger.RemoveWriter(os.Stdout)
 	is.True(err != nil)
 	fmt.Println("err as expected", err.Error())
-}
-
-func BenchmarkLogger(b *testing.B) {
-	Error("This is just an error message")
 }
 
 type SafeInt struct {

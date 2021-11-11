@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+//go:generate stringer -type=LogLevel
+
 //go:generate go run gen/main.go
 
 var defaultLogger *CircularLogger
@@ -17,24 +19,18 @@ var defaultLogger *CircularLogger
 type LogLevel int
 
 const (
-	// Any is not used outside of testing.
-	Any LogLevel = iota
 	// TraceLevel is the lowest log level of logging for very detailed logging when debugging.
-	TraceLevel
+	TraceLevel LogLevel = iota + 1
 	// DebugLevel is typically used when debugging
 	DebugLevel
 	// InfoLevel is used for informational messages that are important but expected
 	InfoLevel
 	// WarnLevel is used for warnings.
 	WarnLevel
-	// ErrLevel is used for non-fatal errors
-	ErrLevel
+	// ErrorLevel is used for non-fatal errors
+	ErrorLevel
 	// FatalLevel is for fatal errors. Not really useful as a log level.
 	FatalLevel
-	// Never is not used ever.
-	Never
-	ErrorLevel   = ErrLevel
-	WarningLevel = WarnLevel
 )
 
 // init() runs when the library is imported. It will start a logger
@@ -43,11 +39,7 @@ func init() {
 	defaultLogger = MakeLogger("", 30, 10)
 }
 
-var Levels = []string{"any", "trace", "debug", "info", "warn", "error", "fatal", "never"}
-
-func (l LogLevel) String() string {
-	return Levels[l]
-}
+// var Levels = []string{"any", "trace", "debug", "info", "warn", "error", "fatal", "never"}
 
 type controlType int
 
@@ -69,8 +61,8 @@ type controlChannel chan controlMessage
 
 const (
 	ctrlDump controlType = iota + 1
-	crtlRst
-	crtlQuit
+	ctrlRst
+	ctrlQuit
 	ctrlAddOutputChan
 	ctrlRemoveOutputChan
 	ctrlAddWriter
@@ -141,9 +133,9 @@ func (l *CircularLogger) channelHandler(wg *sync.WaitGroup) {
 				cMessage.errChan <- l.removeOutputChan(cMessage.outputCh)
 			case ctrlDump:
 				cMessage.returnChan <- l.getMessageOverCh(cMessage.level)
-			case crtlRst:
+			case ctrlRst:
 				cMessage.errChan <- l.handleReset()
-			case crtlQuit:
+			case ctrlQuit:
 				l.running.Set(false)
 				cMessage.errChan <- nil
 				return // ends the goroutine.

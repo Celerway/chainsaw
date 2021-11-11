@@ -28,13 +28,12 @@ func main() {
 	f, err := os.Create("log.go")
 	die(err)
 	defer f.Close()
-	myLevels := chainsaw.Levels[1:7]
+	myLevels := chainsaw.GetLevels()
 	logFunctions := make([]LogFunction, 0)
 	for _, level := range myLevels {
-		lf := LogFunction{
-			Level: strings.Title(level),
-			Fatal: level == "fatal",
-		}
+		lvlName := level.String() // Gives TraceLevel...
+		lvlName = strings.TrimSuffix(lvlName, "Level")
+		lf := LogFunction{Level: lvlName}
 		logFunctions = append(logFunctions, lf)
 	}
 	lt := LogTemplate{
@@ -58,7 +57,6 @@ package chainsaw
 
 import (
 	"fmt"
-	"os"
 )
 
 {{- range .Functions }}
