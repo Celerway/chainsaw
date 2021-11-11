@@ -21,9 +21,10 @@ const (
 
 func TestDemo(t *testing.T) {
 	logger := MakeLogger("test")
-	logger.Trace("trace")
+
+	logger.Trace("trace", 5, 1.0, false)
 	logger.Debug("debug")
-	logger.Info("info")
+	logger.Info("info", "info")
 	logger.Warn("warn")
 	logger.Error("error")
 
@@ -158,11 +159,16 @@ func TestDumpMessages(t *testing.T) {
 	time.Sleep(defaultSleepTime) // Sleep a few ms while the logs get to the right place.
 	fmt.Printf("Generated %d messages\n", counted)
 	msgTrace := log.GetMessages(TraceLevel)
-	msgDebug := log.GetMessages(DebugLevel)
-	msgInfo := log.GetMessages(InfoLevel)
-	msgWarn := log.GetMessages(WarnLevel)
-	msgError := log.GetMessages(ErrorLevel)
 	is := is.New(t)
+	verifyLogLevel(is, msgTrace, TraceLevel)
+	msgDebug := log.GetMessages(DebugLevel)
+	verifyLogLevel(is, msgDebug, DebugLevel)
+	msgInfo := log.GetMessages(InfoLevel)
+	verifyLogLevel(is, msgInfo, InfoLevel)
+	msgWarn := log.GetMessages(WarnLevel)
+	verifyLogLevel(is, msgWarn, WarnLevel)
+	msgError := log.GetMessages(ErrorLevel)
+	verifyLogLevel(is, msgWarn, WarnLevel)
 	is.Equal(len(msgTrace), noOfMessages*5) // Trace
 	is.Equal(len(msgDebug), noOfMessages*4) // Debug
 	is.Equal(len(msgInfo), noOfMessages*3)  // Info
@@ -171,6 +177,12 @@ func TestDumpMessages(t *testing.T) {
 	is.Equal(counted, noOfMessages*5)
 	fmt.Println("All messages accounted for")
 
+}
+
+func verifyLogLevel(is *is.I, msgs []LogMessage, level LogLevel) {
+	for _, m := range msgs {
+		is.True(m.LogLevel >= level) // Verifies that the log level is what we expect or higher
+	}
 }
 
 // TestDumpLimited tests overrunning the log buffer so we can make sure it is actually circular

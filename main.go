@@ -251,6 +251,7 @@ func (l *CircularLogger) removeWriter(o io.Writer) error {
 	return nil
 }
 
+// getMessageOverCh is used by the internal goroutine to fetch loglines
 // Perhaps it would be more efficient to stream these over a channel instead.
 // However, in terms of allocation this will do one big allocation and not many smaller ones.
 func (l *CircularLogger) getMessageOverCh(level LogLevel) []LogMessage {

@@ -57,11 +57,20 @@ package chainsaw
 
 import (
 	"fmt"
+    "strings"
 )
+
+func join(vals []interface{}) string {
+	ss := make([]string, len(vals))
+	for i, value := range vals {
+		ss[i] = fmt.Sprint(value)
+	}
+	return strings.Join(ss, " ")
+}
 
 {{- range .Functions }}
 func (l *CircularLogger) {{.Level}}(v ...interface{}) {
-	s := fmt.Sprint(v...)
+	s := join(v)
 	l.log({{.Level}}Level, s)
 }
 
