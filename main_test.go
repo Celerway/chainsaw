@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"github.com/matryer/is"
+	"log"
 	"os"
+	"os/exec"
 	"sync"
 	"testing"
 	"time"
@@ -363,6 +365,20 @@ func TestOutput(t *testing.T) {
 	err = testLogger.RemoveWriter(os.Stdout)
 	is.True(err != nil)
 	fmt.Println("err as expected", err.Error())
+}
+
+func TestFatal(t *testing.T) {
+	if os.Getenv("BE_FATAL") == "1" {
+		log.Fatal("Fatal log message")
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=TestFatal")
+	cmd.Env = append(os.Environ(), "BE_FATAL=1")
+	err := cmd.Run()
+	if e, ok := err.(*exec.ExitError); ok && !e.Success() {
+		return
+	}
+	t.Fatalf("process ran with err %v, want exit status 1", err)
 }
 
 type SafeInt struct {

@@ -196,9 +196,9 @@ func (m LogMessage) String() string {
 }
 
 func GetLevels() []LogLevel {
-	levels := make([]LogLevel, FatalLevel)
-	for l := TraceLevel; l < FatalLevel; l++ {
-		levels[l] = l
+	levels := make([]LogLevel, 0)
+	for l := TraceLevel; l <= FatalLevel; l++ {
+		levels = append(levels, l)
 	}
 	return levels
 }
