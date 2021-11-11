@@ -393,6 +393,30 @@ func TestFatal(t *testing.T) {
 	t.Fatalf("process ran with err %v, want exit status 1", err)
 }
 
+func useInterface(logger Logger) {
+	logger.Trace("trace")
+	logger.Debug("debug")
+	logger.Info("info")
+	logger.Warn("info")
+	logger.Error("error")
+
+	logger.Tracef("trace %d", 1)
+	logger.Debugf("debug %d", 1)
+	logger.Infof("info %d", 1)
+	logger.Warnf("info %d", 1)
+	logger.Errorf("error %d", 1)
+}
+
+func TestInterface(t *testing.T) {
+
+	logger := MakeLogger("", 20, 0)
+	useInterface(logger)
+	logger.Flush()
+	msgs := logger.GetMessages(TraceLevel)
+	is := is.New(t)
+	is.Equal(len(msgs), 10)
+}
+
 type SafeInt struct {
 	value int
 	m     sync.RWMutex
