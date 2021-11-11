@@ -30,7 +30,7 @@ func TestParseLogLevel(t *testing.T) {
 		{"errorUpper", args{"ERROR"}, ErrorLevel},
 		{"fatalUpper", args{"FATAL"}, FatalLevel},
 		{"empty", args{""}, InfoLevel},
-		{"invalid", args{""}, InfoLevel},
+		{"invalid", args{"blalbla"}, InfoLevel},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
