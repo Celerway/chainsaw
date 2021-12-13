@@ -75,11 +75,6 @@ func Reset() {
 // Log messages will be streamed on this channel. The channel MUST
 // be serviced or the logger will lock up.
 func (l *CircularLogger) GetStream(ctx context.Context) chan LogMessage {
-	/*
-		There is a race condition here. What happens is:
-		ctx is cancelled.
-		We send the control message then we get blocked --> deadlock.
-	*/
 	// Make the channel we're gonna return.
 	retCh := make(chan LogMessage, l.chanBufferSize)
 	cMessage := controlMessage{cType: ctrlAddOutputChan, outputCh: retCh}
