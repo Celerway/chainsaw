@@ -17,16 +17,16 @@ const (
 // MakeLogger creates a new logger instance.
 // Params:
 // Mandatory is name, can be empty.
-// In addition you can supply two ints:
+// In addition, you can supply two ints:
 // logBufferSize - the size of the circular buffer
 // chanBufferSize - how big the channels buffers should be
 func MakeLogger(name string, options ...int) *CircularLogger {
 	logBufferSize := defaultLogBufferSize
 	chanBufferSize := defaultChanBufferSize
-	if len(options) > 1 {
+	if len(options) > 0 {
 		logBufferSize = options[0]
 	}
-	if len(options) > 2 {
+	if len(options) > 1 {
 		chanBufferSize = options[1]
 	}
 	c := CircularLogger{
@@ -52,9 +52,7 @@ func MakeLogger(name string, options ...int) *CircularLogger {
 // Things might deadlock if you log while it is down.
 func (l *CircularLogger) Stop() {
 	if l.running.Get() {
-		cMsg := controlMessage{
-			cType: ctrlQuit,
-		}
+		cMsg := controlMessage{cType: ctrlQuit}
 		_ = l.sendCtrlAndWait(cMsg)
 	} else {
 		fmt.Printf("Error! Stop called on a passive logger")
@@ -63,9 +61,7 @@ func (l *CircularLogger) Stop() {
 
 // Reset the circular buffer of the logger. Flush the logs.
 func (l *CircularLogger) Reset() {
-	cMsg := controlMessage{
-		cType: ctrlRst,
-	}
+	cMsg := controlMessage{cType: ctrlRst}
 	_ = l.sendCtrlAndWait(cMsg)
 }
 
@@ -83,14 +79,14 @@ func (l *CircularLogger) GetStream(ctx context.Context) chan LogMessage {
 		There is a race condition here. What happens is:
 		ctx is cancelled.
 		We send the control message then we get blocked --> deadlock.
-
 	*/
 	// Make the channel we're gonna return.
 	retCh := make(chan LogMessage, l.chanBufferSize)
 	cMessage := controlMessage{cType: ctrlAddOutputChan, outputCh: retCh}
 	_ = l.sendCtrlAndWait(cMessage)
+	// spin of a goroutine that will wait for the context.
 	go func(outputCh chan LogMessage) {
-		<-ctx.Done()
+		<-ctx.Done() // wait for the context to cancel
 		cMessage := controlMessage{cType: ctrlRemoveOutputChan, outputCh: outputCh}
 		err := l.sendCtrlAndWait(cMessage) // waits for the response.
 		if err != nil {
@@ -114,7 +110,6 @@ func (l *CircularLogger) GetMessages(level LogLevel) []LogMessage {
 		cType:      ctrlDump,
 		returnChan: retCh,
 		level:      level,
-		outputCh:   nil,
 	}
 	l.controlCh <- cMsg // Requesting messages over control channel
 	ret := <-retCh

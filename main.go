@@ -12,6 +12,7 @@ import (
 //go:generate stringer -type=LogLevel
 
 //go:generate go run gen/main.go
+const channelTimeout = time.Second
 
 var defaultLogger *CircularLogger
 
@@ -84,24 +85,21 @@ type LogMessage struct {
 // CircularLogger is the struct holding a chainsaw instance.
 // All state within is private and should be access through methods.
 type CircularLogger struct {
-	// The name gets  into all the loglines.
-	name string
-	// at what log level should messages be printed to stdout
-	printLevel LogLevel
+	name       string   // The name gets  into all the loglines when printed.
+	printLevel LogLevel // at what log level should messages be printed to stdout
 	// messages is the internal log buffer keeping the last messages in a circular buffer
 	messages []LogMessage
-	// logChan Messages are send over this channel to the log worker.
-	logCh logChan
+	logCh    logChan // logChan Messages are send over this channel to the log worker.
 	// outputChs is a list of channels that messages are copied onto when they arrive
 	// if a stream has been requested it is added here.
 	outputChs []logChan
 	// controlCh is the internal channel that is used for control messages.
 	controlCh      controlChannel
-	current        int
-	logBufferSize  int
-	outputWriters  []io.Writer
-	running        atomicBool
-	chanBufferSize int
+	current        int         // points to the current message in the circular buffer
+	logBufferSize  int         // the size of the circular buffer we use.
+	outputWriters  []io.Writer // List of io.Writers where the output gets copied.
+	running        atomicBool  // bool to indicate that the internal goroutine for the logger is running.
+	chanBufferSize int         // how big the channel buffer is. re-used when making streams.
 }
 
 func (l *CircularLogger) log(level LogLevel, m string) {
@@ -155,8 +153,15 @@ func (l *CircularLogger) channelHandler(wg *sync.WaitGroup) {
 			l.messages[l.current] = msg
 			l.current = (l.current + 1) % l.logBufferSize
 			for _, ch := range l.outputChs {
-				// println("sending to channel ", i, msg.Content)
-				ch <- msg
+				select {
+				case ch <- msg:
+				case <-time.After(channelTimeout):
+					fmt.Println("timed out during channel write, removing channel")
+					err := l.removeOutputChan(ch) // This should be safe. The channel is buffered.
+					if err != nil {
+						fmt.Println("error while removing block channel: ", err)
+					}
+				}
 			}
 			if msg.LogLevel == FatalLevel {
 				fmt.Println("[chainsaw causing exit]")

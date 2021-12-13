@@ -256,6 +256,31 @@ func TestStream(t *testing.T) {
 	fmt.Println("Stream test passed")
 }
 
+// TestStreamBlocked will create a logger, open a stream, fail to service that stream and
+// detect if time out.
+// If we don't carefully write to channels this will cause a deadlock panic.
+func TestStreamBlocked(t *testing.T) {
+	is := is.New(t)
+	testLogger := MakeLogger("", 10, 0) // Unbuffered so we provoke races.
+	defer testLogger.Stop()
+	ctx, cancel := context.WithCancel(context.Background())
+	stream := testLogger.GetStream(ctx)
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	start := time.Now()
+	go func() {
+		testLogger.Info("Silly message #1")
+		_ = testLogger.Flush() // will block and trigger deadlock if it isn't handled.
+		wg.Done()
+	}()
+	wg.Wait()
+	cancel()
+	fmt.Println(<-stream)
+	timeTaken := time.Since(start)
+	is.True(timeTaken < channelTimeout*2)
+	fmt.Println("ok")
+}
+
 func handleStream(stream chan LogMessage, counter *SafeInt, wg *sync.WaitGroup) {
 	for range stream {
 		counter.Inc()
@@ -362,6 +387,8 @@ func TestManyLoggers(t *testing.T) {
 		}
 	}
 	for i, logger := range loggers {
+		err := logger.Flush()
+		is.NoErr(err)
 		msgs := logger.GetMessages(TraceLevel)
 		m := msgs[0]
 		is.Equal(fmt.Sprintf("Message %d on logger %d", messagesPerLogger-logBufferSize, i), m.Content)
