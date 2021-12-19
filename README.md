@@ -1,5 +1,7 @@
-# Chainsaw
-Circular buffer logging framework for Go. 
+# Chainsaw, circular, structured logging
+
+This is a highly opinionated, structured logging library for Go. Opinions in a logging 
+framework are generally good, as logs should be uniform.
 
 This logging library will keep the last N log messages around. This allows you to 
 dump the logs at trace or debug level if you encounter an error, contextualizing
@@ -10,7 +12,41 @@ applications which have sub-applications where you might wanna look at different
 streams of logs. Say in an application which has a bunch of goroutines which have
 more or less independent logs.
 
-## Example usage
+## Fields
+
+Chainsaw supports fields. These can either be set on a logger using the `SetFields`methods
+or passed when using the fields enabled logging functions and methods (ending in 'w').
+
+A field is a `Pair` consisting of a key, `string` and value, `interface{}`.  
+
+## Usage
+
+### With or without instances
+You can choose to instantiate a logger. Doing this will allow you to set a
+name as well as to add some fields to the logger.
+#### without a logger instance.
+```go
+	chainsaw.Infof("Application %f starting up", version)
+	if err!= nil {
+        chainsaw.Fatal("Out of gloop")	
+    }
+	// with fields:
+	chainsaw.Infow("Can't open file",chainsaw.P{"file", file}, chainsaw.P{"err", err})
+```
+#### with a logger instance.
+```go
+
+    logger := chainsaw.MakeLogger("main")
+	logger.SetFields(chainsaw.P{"hostname", hostname})
+	logger.Error("Error in file:", err)
+}
+```
+
+
+
+
+
+## A complete example
 
 ```go
 package main

@@ -21,7 +21,7 @@ const (
 
 func TestDemo(t *testing.T) {
 	logger := MakeLogger("test")
-
+	logger.SetLevel(TraceLevel)
 	logger.Trace("trace", 5, 1.0, false)
 	logger.Debug("debug")
 	logger.Info("info", "info")
@@ -32,7 +32,7 @@ func TestDemo(t *testing.T) {
 	logger.Flush()
 	msgs := logger.GetMessages(TraceLevel)
 	for _, msg := range msgs {
-		fmt.Println(msg.String())
+		fmt.Println(logger.formatMessage(msg))
 	}
 	logger.Stop()
 }
@@ -51,6 +51,7 @@ func TestLoggingPerformance(t *testing.T) {
 	fmt.Printf("Duration per logging invokation: %v\n", avg)
 	is := is.New(t)
 	is.True(avg < timeout) // Check if we are somewhat performant.
+	_ = log.Flush()
 	start = time.Now()
 	for i := 0; i < runs; i++ {
 		_ = log.Flush()
@@ -70,29 +71,43 @@ func TestLogging(t *testing.T) {
 	is.NoErr(err)
 	err = log.RemoveWriter(os.Stdout)
 	is.NoErr(err)
-	log.Trace("Trace message")
+	log.Trace("Trace", "concatenated")
 	log.Tracef("Tracef message: %d", 1)
-	log.Debug("Debug message")
+	log.Tracew("Trace field", P{"test", 1})
+
+	log.Debug("Debug message", "concatenated")
 	log.Debugf("Debugf message: %d", 1)
-	log.Info("Info message")
+	log.Debugw("Debug field", P{"test", 2})
+
+	log.Info("Info", "concatenated")
 	log.Infof("Infof message: %d", 1)
-	log.Warn("Warn message")
+	log.Infow("Info field", P{"infotest", 3})
+
+	log.Warn("Warn", "concatenated")
 	log.Warnf("Warnf message: %d", 1)
-	log.Error("Error message")
+	log.Warnw("Warn field", P{"warntest", 4})
+
+	log.Error("Error", "concatenated")
 	log.Errorf("Errorf message: %d", 1)
-	log.Flush()
+	log.Errorw("Error field", P{"errortest", 5})
+
+	_ = log.Flush()
 	time.Sleep(defaultSleepTime)
 	b := buffer.Bytes()
-	is.True(!bytes.Contains(b, []byte("Trace message")))
-	is.True(!bytes.Contains(b, []byte("Tracef message: 1")))
-	is.True(!bytes.Contains(b, []byte("Debug message")))
-	is.True(!bytes.Contains(b, []byte("Debugf message: 1")))
-	is.True(bytes.Contains(b, []byte("Info message")))
+	fmt.Println("=== log buffer =====")
+	fmt.Println(string(b), "====================")
+	is.True(!bytes.Contains(b, []byte("Trace")))
+	is.True(!bytes.Contains(b, []byte("Debug")))
+	is.True(bytes.Contains(b, []byte("Info concatenated")))
 	is.True(bytes.Contains(b, []byte("Infof message: 1")))
-	is.True(bytes.Contains(b, []byte("Warn message")))
+	is.True(bytes.Contains(b, []byte("infotest=3")))
+	is.True(bytes.Contains(b, []byte("Warn concatenated")))
 	is.True(bytes.Contains(b, []byte("Warnf message: 1")))
-	is.True(bytes.Contains(b, []byte("Error message")))
+	is.True(bytes.Contains(b, []byte("warntest=4")))
+	is.True(bytes.Contains(b, []byte("Error concatenated")))
 	is.True(bytes.Contains(b, []byte("Errorf message: 1")))
+	is.True(bytes.Contains(b, []byte("errortest=5")))
+
 }
 
 // TestRemoveWriter uses the default logger instance.
@@ -206,7 +221,7 @@ func TestDumpLimited(t *testing.T) {
 	is := is.New(t)
 	is.Equal(len(msgs), logBufferSize)
 	for i, m := range msgs {
-		is.Equal(fmt.Sprintf("Info message %d", i+logBufferSize), m.Content)
+		is.Equal(fmt.Sprintf("Info message %d", i+logBufferSize), m.Message)
 	}
 	fmt.Println("Validated log content")
 }
@@ -231,7 +246,7 @@ func TestStream(t *testing.T) {
 			fmt.Print(".")
 			is.Equal(msg.LogLevel, TraceLevel) // Verify that these are debug messages.
 			// And verify the content:
-			is.Equal(fmt.Sprintf("Trace message %d/%d", streamedMessages.Get(), noOfMessages), msg.Content)
+			is.Equal(fmt.Sprintf("Trace message %d/%d", streamedMessages.Get(), noOfMessages), msg.Message)
 			streamedMessages.Inc()
 		}
 		wg.Done()
@@ -391,7 +406,7 @@ func TestManyLoggers(t *testing.T) {
 		is.NoErr(err)
 		msgs := logger.GetMessages(TraceLevel)
 		m := msgs[0]
-		is.Equal(fmt.Sprintf("Message %d on logger %d", messagesPerLogger-logBufferSize, i), m.Content)
+		is.Equal(fmt.Sprintf("Message %d on logger %d", messagesPerLogger-logBufferSize, i), m.Message)
 	}
 	fmt.Println("Done")
 }

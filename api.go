@@ -40,6 +40,7 @@ func MakeLogger(name string, options ...int) *CircularLogger {
 		logBufferSize:  logBufferSize,
 		chanBufferSize: chanBufferSize,
 		outputWriters:  []io.Writer{os.Stdout},
+		TimeFmt:        "2006-01-02T15:04:05-0700",
 	}
 	wg := sync.WaitGroup{} // Waits for the goroutine to start.
 	wg.Add(1)
@@ -117,6 +118,14 @@ func GetMessages(level LogLevel) []LogMessage {
 	return l.GetMessages(level)
 }
 
+// BackTrace logs messages from the current buffer to the log file.
+// This happens in one single write so it'll be continous in the logs.
+// Todo: finish this. Needs to have formatting stuff done first, which needs the structured bits to work.
+func BackTrace() error {
+
+	return nil
+}
+
 // SetLevel sets the log level. This affects if messages are printed to
 // the outputs or not.
 func SetLevel(level LogLevel) {
@@ -180,11 +189,6 @@ func (l *CircularLogger) Flush() error {
 	return l.sendCtrlAndWait(cMsg)
 }
 
-func (m LogMessage) String() string {
-	tStr := m.TimeStamp.Format("2006-01-02T15:04:05-0700")
-	return fmt.Sprintf("%s: [%s] %s", tStr, m.LogLevel.String(), m.Content)
-}
-
 func GetLevels() []LogLevel {
 	levels := make([]LogLevel, 0)
 	for l := TraceLevel; l <= FatalLevel; l++ {
@@ -196,9 +200,6 @@ func GetLevels() []LogLevel {
 func ParseLogLevel(s string) LogLevel {
 	level := InfoLevel
 	s = strings.ToLower(s)
-	if !strings.HasSuffix(s, "level") {
-		s = s + "level"
-	}
 	for l := TraceLevel; l <= FatalLevel; l++ {
 		cmpLevel := strings.ToLower(l.String())
 		if cmpLevel == s {

@@ -5,5 +5,5 @@ race:
 	go test -race ./...
 
 generate:
-	rm log.go
+	rm -f log.go
 	go generate main.go

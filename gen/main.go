@@ -31,8 +31,8 @@ func main() {
 	myLevels := chainsaw.GetLevels()
 	logFunctions := make([]LogFunction, 0)
 	for _, level := range myLevels {
-		lvlName := level.String() // Gives TraceLevel...
-		lvlName = strings.TrimSuffix(lvlName, "Level")
+		lvlName := strings.Title(level.String())
+		fmt.Println("Level found", lvlName)
 		lf := LogFunction{Level: lvlName}
 		logFunctions = append(logFunctions, lf)
 	}
@@ -69,14 +69,25 @@ func join(vals []interface{}) string {
 }
 
 {{- range .Functions }}
+// {{.Level}} takes a number of arguments, makes them into strings and logs
+// them with level {{.Level}}Level
 func (l *CircularLogger) {{.Level}}(v ...interface{}) {
 	s := join(v)
-	l.log({{.Level}}Level, s)
+	l.log({{.Level}}Level, s, "")
 }
 
+// {{.Level}}f takes a format and arguments, formats a string a logs it with {{.Level}}Level
 func (l *CircularLogger) {{.Level}}f(f string,v ...interface{}) {
 	s := fmt.Sprintf(f, v...)
-	l.log({{.Level}}Level, s)
+	l.log({{.Level}}Level, s, "")
+}
+
+// {{.Level}}w takes a message and a number of pairs, type chainsaw.P. A fully structured
+// log message will be generated with the pairs formatted into key/value pairs
+// Note that keys must be strings, values can be strings, numbers, time.Time and a few other types.
+func (l *CircularLogger) {{.Level}}w(msg string, pairs ...P) {
+	fields := l.formatFields(pairs)
+	l.log({{.Level}}Level, msg, fields)
 }
 
 func {{.Level}}(v ...interface{}) {

@@ -4,12 +4,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 )
-
-//go:generate stringer -type=LogLevel
 
 //go:generate go run gen/main.go
 const channelTimeout = time.Second
@@ -33,6 +32,24 @@ const (
 	// FatalLevel is for fatal errors. Not really useful as a log level.
 	FatalLevel
 )
+
+func (level LogLevel) String() string {
+	switch level {
+	case TraceLevel:
+		return "trace"
+	case DebugLevel:
+		return "debug"
+	case InfoLevel:
+		return "info"
+	case WarnLevel:
+		return "warn"
+	case ErrorLevel:
+		return "error"
+	case FatalLevel:
+		return "fatal"
+	}
+	return "unknown"
+}
 
 // init() runs when the library is imported. It will start a logger
 // so the library can be used without initializing a custom logger.
@@ -77,9 +94,10 @@ type logChan chan LogMessage
 // LogMessage contains a single log line. Timestamp is added by Chainsaw, the rest comes
 // from the user.
 type LogMessage struct {
-	Content   string
+	Message   string
 	LogLevel  LogLevel
 	TimeStamp time.Time
+	Fields    string
 }
 
 // CircularLogger is the struct holding a chainsaw instance.
@@ -89,7 +107,7 @@ type CircularLogger struct {
 	printLevel LogLevel // at what log level should messages be printed to stdout
 	// messages is the internal log buffer keeping the last messages in a circular buffer
 	messages []LogMessage
-	logCh    logChan // logChan Messages are send over this channel to the log worker.
+	logCh    logChan // logChan Messages are sent over this channel to the log worker.
 	// outputChs is a list of channels that messages are copied onto when they arrive
 	// if a stream has been requested it is added here.
 	outputChs []logChan
@@ -100,16 +118,19 @@ type CircularLogger struct {
 	outputWriters  []io.Writer // List of io.Writers where the output gets copied.
 	running        atomicBool  // bool to indicate that the internal goroutine for the logger is running.
 	chanBufferSize int         // how big the channel buffer is. re-used when making streams.
+	TimeFmt        string      // format string for date. Default is "2006-01-02T15:04:05-0700"
+	fields         string      // pre-formatted set of fields. this gets included in every line.
 }
 
-func (l *CircularLogger) log(level LogLevel, m string) {
+func (l *CircularLogger) log(level LogLevel, message string, fields string) {
 	if !l.GetStatus() {
 		// If the logger is down we will deadlock quickly and nobody wants that.
 		panic("chainsaw panic: Logging goroutine is stopped")
 	}
 	t := time.Now()
 	logM := LogMessage{
-		Content:   m,
+		Message:   message,
+		Fields:    fields,
 		LogLevel:  level,
 		TimeStamp: t,
 	}
@@ -172,19 +193,43 @@ func (l *CircularLogger) channelHandler(wg *sync.WaitGroup) {
 	}
 }
 
-func (l *CircularLogger) handleLogOutput(m LogMessage) {
-	tStr := m.TimeStamp.Format("2006-01-02T15:04:05-0700")
-	var nameStr string
-	if l.name != "" {
-		nameStr = fmt.Sprintf("/%s", l.name)
+func (l *CircularLogger) formatMessage(m LogMessage) string {
+	output := make([]string, 5)
+	// add time.
+	output = append(output,
+		l.formatPair("time", m.TimeStamp))
+	// add logger name if set.
+	if len(l.name) > 0 {
+		output = append(output,
+			l.formatPair("logger", l.name))
 	}
-	if m.LogLevel >= l.printLevel {
-		str := fmt.Sprintf("%s%s: [%s] %s\n", tStr, nameStr, m.LogLevel.String(), m.Content)
-		for _, output := range l.outputWriters {
-			_, err := io.WriteString(output, str) // Should we check for a short write?
-			if err != nil {
-				fmt.Printf("Internal error in chainsaw: Can't write to outputWriter: %s", err)
-			}
+	// add level
+	output = append(output,
+		l.formatPair("level", m.LogLevel.String()))
+	// add permanent fields from logger
+	if len(l.fields) > 0 {
+		output = append(output, l.fields)
+	}
+	// add message specific fields:
+	if len(m.Fields) > 0 {
+		output = append(output, m.Fields)
+	}
+	output = append(output, l.formatPair("message", m.Message))
+	outputStr := strings.Join(output, " ") + "\n"
+	return outputStr
+}
+
+// handleLogOutput takes a message and spits it out on all available output
+// Todo: Factor out the formatting code from this.
+func (l *CircularLogger) handleLogOutput(m LogMessage) {
+	if m.LogLevel < l.printLevel {
+		return
+	}
+	outputStr := l.formatMessage(m)
+	for _, outputW := range l.outputWriters {
+		_, err := io.WriteString(outputW, outputStr)
+		if err != nil {
+			fmt.Printf("Internal error in chainsaw: Can't write to outputWriter: %s", err)
 		}
 	}
 }
@@ -202,12 +247,11 @@ func (l *CircularLogger) addOutputChan(ch logChan) error {
 			found = true
 		}
 	}
-	if !found {
-		l.outputChs = append(l.outputChs, ch)
-		return nil
-	} else {
+	if found {
 		return fmt.Errorf("output channel already added to the logger")
 	}
+	l.outputChs = append(l.outputChs, ch)
+	return nil
 }
 
 func (l *CircularLogger) removeOutputChan(ch logChan) error {
@@ -233,12 +277,11 @@ func (l *CircularLogger) addWriter(o io.Writer) error {
 			found = true
 		}
 	}
-	if !found {
-		l.outputWriters = append(l.outputWriters, o)
-		return nil
-	} else {
+	if found {
 		return fmt.Errorf("writer already present in logger: %v", o)
 	}
+	l.outputWriters = append(l.outputWriters, o)
+	return nil
 }
 
 func (l *CircularLogger) removeWriter(o io.Writer) error {
