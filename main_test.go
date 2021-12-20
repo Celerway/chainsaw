@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -66,8 +67,8 @@ func TestLogging(t *testing.T) {
 	log := MakeLogger("", testDefaultLogBufferSize, testDefaultChanBufferSize)
 	defer log.Stop()
 	is := is.New(t)
-	buffer := &SafeBuffer{}
-	err := log.AddWriter(buffer)
+	stringOutput := &stringLogger{}
+	err := log.AddWriter(stringOutput)
 	is.NoErr(err)
 	err = log.RemoveWriter(os.Stdout)
 	is.NoErr(err)
@@ -90,23 +91,20 @@ func TestLogging(t *testing.T) {
 	log.Error("Error", "concatenated")
 	log.Errorf("Errorf message: %d", 1)
 	log.Errorw("Error field", P{"errortest", 5})
-
 	_ = log.Flush()
-	time.Sleep(defaultSleepTime)
-	b := buffer.Bytes()
-	fmt.Println("=== log buffer =====")
-	fmt.Println(string(b), "====================")
-	is.True(!bytes.Contains(b, []byte("Trace")))
-	is.True(!bytes.Contains(b, []byte("Debug")))
-	is.True(bytes.Contains(b, []byte("Info concatenated")))
-	is.True(bytes.Contains(b, []byte("Infof message: 1")))
-	is.True(bytes.Contains(b, []byte("infotest=3")))
-	is.True(bytes.Contains(b, []byte("Warn concatenated")))
-	is.True(bytes.Contains(b, []byte("Warnf message: 1")))
-	is.True(bytes.Contains(b, []byte("warntest=4")))
-	is.True(bytes.Contains(b, []byte("Error concatenated")))
-	is.True(bytes.Contains(b, []byte("Errorf message: 1")))
-	is.True(bytes.Contains(b, []byte("errortest=5")))
+	is.Equal(len(stringOutput.loglines), 9)
+	is.True(!stringOutput.contains("Trace")) // no traces should have been logged.
+	is.True(!stringOutput.contains("Debug")) // no debug should have been logged.
+	// Check that the output arrived where we expected it to.
+	is.True(strings.Contains(stringOutput.loglines[0], "Info concatenated"))
+	is.True(strings.Contains(stringOutput.loglines[1], "Infof message: 1"))
+	is.True(strings.Contains(stringOutput.loglines[2], "infotest=3"))
+	is.True(strings.Contains(stringOutput.loglines[3], "Warn concatenated"))
+	is.True(strings.Contains(stringOutput.loglines[4], "Warnf message: 1"))
+	is.True(strings.Contains(stringOutput.loglines[5], "warntest=4"))
+	is.True(strings.Contains(stringOutput.loglines[6], "Error concatenated"))
+	is.True(strings.Contains(stringOutput.loglines[7], "Errorf message: 1"))
+	is.True(strings.Contains(stringOutput.loglines[8], "errortest=5"))
 
 }
 
@@ -115,7 +113,6 @@ func TestRemoveWriter(t *testing.T) {
 	Reset()
 	SetLevel(InfoLevel)
 	buffer := &SafeBuffer{}
-	// buffer := bytes.NewBuffer(nil)
 	AddWriter(buffer)
 	RemoveWriter(os.Stdout)
 	Trace("Trace message")
@@ -457,47 +454,4 @@ func TestInterface(t *testing.T) {
 	msgs := logger.GetMessages(TraceLevel)
 	is := is.New(t)
 	is.Equal(len(msgs), 10)
-}
-
-type SafeInt struct {
-	value int
-	m     sync.RWMutex
-}
-
-func (i *SafeInt) Inc() {
-	i.m.Lock()
-	defer i.m.Unlock()
-	i.value++
-}
-func (i *SafeInt) Get() int {
-	i.m.RLock()
-	defer i.m.RUnlock()
-	return i.value
-}
-
-type SafeBuffer struct {
-	b bytes.Buffer
-	m sync.Mutex
-}
-
-func (b *SafeBuffer) Read(p []byte) (n int, err error) {
-	b.m.Lock()
-	defer b.m.Unlock()
-	return b.b.Read(p)
-}
-func (b *SafeBuffer) Write(p []byte) (n int, err error) {
-	b.m.Lock()
-	defer b.m.Unlock()
-	return b.b.Write(p)
-}
-func (b *SafeBuffer) String() string {
-	b.m.Lock()
-	defer b.m.Unlock()
-	return b.b.String()
-}
-
-func (b *SafeBuffer) Bytes() []byte {
-	b.m.Lock()
-	defer b.m.Unlock()
-	return b.b.Bytes()
 }
