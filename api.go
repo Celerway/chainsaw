@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"strings"
-	"sync"
 )
 
 const (
@@ -42,22 +42,16 @@ func MakeLogger(name string, options ...int) *CircularLogger {
 		outputWriters:  []io.Writer{os.Stdout},
 		TimeFmt:        "2006-01-02T15:04:05-0700",
 	}
-	wg := sync.WaitGroup{} // Waits for the goroutine to start.
-	wg.Add(1)
-	go c.channelHandler(&wg)
-	wg.Wait()
+	go c.channelHandler()
+	runtime.Gosched()
 	return &c
 }
 
 // Stop the goroutine which handles the log channel.
 // Things might deadlock if you log while it is down.
 func (l *CircularLogger) Stop() {
-	if l.running.Get() {
-		cMsg := controlMessage{cType: ctrlQuit}
-		_ = l.sendCtrlAndWait(cMsg)
-	} else {
-		fmt.Printf("Error! Stop called on a passive logger")
-	}
+	cMsg := controlMessage{cType: ctrlQuit}
+	_ = l.sendCtrlAndWait(cMsg)
 }
 
 // Reset the circular buffer of the logger. Flush the logs.
@@ -119,7 +113,7 @@ func GetMessages(level LogLevel) []LogMessage {
 }
 
 // BackTrace logs messages from the current buffer to the log file.
-// This happens in one single write so it'll be continous in the logs.
+// This happens in one single write so it'll be continuous in the logs.
 // Todo: finish this. Needs to have formatting stuff done first, which needs the structured bits to work.
 func BackTrace() error {
 
@@ -175,11 +169,6 @@ func (l *CircularLogger) RemoveWriter(o io.Writer) error {
 func RemoveWriter(o io.Writer) error {
 	l := defaultLogger
 	return l.RemoveWriter(o)
-}
-
-// GetStatus returns true if the logger goroutine is running.
-func (l *CircularLogger) GetStatus() bool {
-	return l.running.Get()
 }
 
 // Flush sends a no-op message and waits for the reply. This flushes the

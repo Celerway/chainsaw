@@ -1,6 +1,7 @@
 package chainsaw
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -72,8 +73,7 @@ func reflectTest(value interface{}) int {
 	return 0
 }
 
-var globalSum int
-
+// makeWeirdList makes a list of various types to throw benchmarks below
 func makeWeirdList() []interface{} {
 	var list []interface{}
 	for i := 0; i < 10; i++ {
@@ -81,6 +81,8 @@ func makeWeirdList() []interface{} {
 	}
 	return list
 }
+
+var globalSum int // Throw off the optimizer
 
 func Benchmark_TypeSwitch(b *testing.B) {
 	sum := 0
@@ -119,5 +121,7 @@ func Test_Benchmark(t *testing.T) {
 	if sumReflect != sumSwitch {
 		t.Errorf("reflectiong and typeswich values don't match")
 	}
-
+	if globalSum != 0 {
+		fmt.Println("dummy statement to shut to linter up")
+	}
 }

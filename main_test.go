@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/matryer/is"
+	is2 "github.com/matryer/is"
 	"log"
 	"os"
 	"os/exec"
@@ -21,6 +21,7 @@ const (
 )
 
 func TestDemo(t *testing.T) {
+	is := is2.New(t)
 	logger := MakeLogger("test")
 	logger.SetLevel(TraceLevel)
 	logger.Trace("trace", 5, 1.0, false)
@@ -30,7 +31,8 @@ func TestDemo(t *testing.T) {
 	logger.Error("error")
 
 	// 2021-11-11T08:19:42+0100/test: [info] This message is an info message
-	logger.Flush()
+	err := logger.Flush()
+	is.NoErr(err)
 	msgs := logger.GetMessages(TraceLevel)
 	for _, msg := range msgs {
 		fmt.Println(logger.formatMessage(msg))
@@ -39,23 +41,25 @@ func TestDemo(t *testing.T) {
 }
 
 func TestLoggingPerformance(t *testing.T) {
+	is := is2.New(t)
+
 	const runs = 20000
 	const timeout = 3 * time.Millisecond
-	log := MakeLogger("", testDefaultLogBufferSize, testDefaultChanBufferSize)
-	log.RemoveWriter(os.Stdout) // Reduce noise.
+	logger := MakeLogger("", testDefaultLogBufferSize, testDefaultChanBufferSize)
+	err := logger.RemoveWriter(os.Stdout) // Reduce noise.
+	is.NoErr(err)
 	start := time.Now()
 	for i := 0; i < runs; i++ {
-		log.Debug("Dummy message")
+		logger.Debug("Dummy message")
 	}
 	dur := time.Since(start)
 	avg := dur / runs
 	fmt.Printf("Duration per logging invokation: %v\n", avg)
-	is := is.New(t)
 	is.True(avg < timeout) // Check if we are somewhat performant.
-	_ = log.Flush()
+	_ = logger.Flush()
 	start = time.Now()
 	for i := 0; i < runs; i++ {
-		_ = log.Flush()
+		_ = logger.Flush()
 	}
 	dur = time.Since(start)
 	avg = dur / runs
@@ -64,34 +68,34 @@ func TestLoggingPerformance(t *testing.T) {
 }
 
 func TestLogging(t *testing.T) {
-	log := MakeLogger("", testDefaultLogBufferSize, testDefaultChanBufferSize)
-	defer log.Stop()
-	is := is.New(t)
+	logger := MakeLogger("", testDefaultLogBufferSize, testDefaultChanBufferSize)
+	defer logger.Stop()
+	is := is2.New(t)
 	stringOutput := &stringLogger{}
-	err := log.AddWriter(stringOutput)
+	err := logger.AddWriter(stringOutput)
 	is.NoErr(err)
-	err = log.RemoveWriter(os.Stdout)
+	err = logger.RemoveWriter(os.Stdout)
 	is.NoErr(err)
-	log.Trace("Trace", "concatenated")
-	log.Tracef("Tracef message: %d", 1)
-	log.Tracew("Trace field", P{"test", 1})
+	logger.Trace("Trace", "concatenated")
+	logger.Tracef("Tracef message: %d", 1)
+	logger.Tracew("Trace field", P{"test", 1})
 
-	log.Debug("Debug message", "concatenated")
-	log.Debugf("Debugf message: %d", 1)
-	log.Debugw("Debug field", P{"test", 2})
+	logger.Debug("Debug message", "concatenated")
+	logger.Debugf("Debugf message: %d", 1)
+	logger.Debugw("Debug field", P{"test", 2})
 
-	log.Info("Info", "concatenated")
-	log.Infof("Infof message: %d", 1)
-	log.Infow("Info field", P{"infotest", 3})
+	logger.Info("Info", "concatenated")
+	logger.Infof("Infof message: %d", 1)
+	logger.Infow("Info field", P{"infotest", 3})
 
-	log.Warn("Warn", "concatenated")
-	log.Warnf("Warnf message: %d", 1)
-	log.Warnw("Warn field", P{"warntest", 4})
+	logger.Warn("Warn", "concatenated")
+	logger.Warnf("Warnf message: %d", 1)
+	logger.Warnw("Warn field", P{"warntest", 4})
 
-	log.Error("Error", "concatenated")
-	log.Errorf("Errorf message: %d", 1)
-	log.Errorw("Error field", P{"errortest", 5})
-	_ = log.Flush()
+	logger.Error("Error", "concatenated")
+	logger.Errorf("Errorf message: %d", 1)
+	logger.Errorw("Error field", P{"errortest", 5})
+	_ = logger.Flush()
 	is.Equal(len(stringOutput.loglines), 9)
 	is.True(!stringOutput.contains("Trace")) // no traces should have been logged.
 	is.True(!stringOutput.contains("Debug")) // no debug should have been logged.
@@ -110,11 +114,14 @@ func TestLogging(t *testing.T) {
 
 // TestRemoveWriter uses the default logger instance.
 func TestRemoveWriter(t *testing.T) {
+	is := is2.New(t)
 	Reset()
 	SetLevel(InfoLevel)
 	buffer := &SafeBuffer{}
-	AddWriter(buffer)
-	RemoveWriter(os.Stdout)
+	err := AddWriter(buffer)
+	is.NoErr(err)
+	err = RemoveWriter(os.Stdout)
+	is.NoErr(err)
 	Trace("Trace message")
 	Tracef("Tracef message: %d", 1)
 	Debug("Debug message")
@@ -126,11 +133,11 @@ func TestRemoveWriter(t *testing.T) {
 	Error("Error message")
 	Errorf("Errorf message: %d", 1)
 	time.Sleep(defaultSleepTime)
-	is := is.New(t)
 	is.Equal(len(GetMessages(InfoLevel)), 6)
 	is.Equal(len(GetMessages(WarnLevel)), 4)
 	is.Equal(len(GetMessages(ErrorLevel)), 2)
-	RemoveWriter(buffer)
+	err = RemoveWriter(buffer)
+	is.NoErr(err)
 	time.Sleep(defaultSleepTime)
 	Error("XXX message")
 	Errorf("XXXf message: %d", 1)
@@ -153,9 +160,11 @@ func TestRemoveWriter(t *testing.T) {
 
 // TestDumpMessages makes a few log messages. Fetches them back and sees that they are all there.
 func TestDumpMessages(t *testing.T) {
+	is := is2.New(t)
 	const logBufferSize = 50
 	log := MakeLogger("", logBufferSize, testDefaultChanBufferSize)
-	log.RemoveWriter(os.Stdout)
+	err := log.RemoveWriter(os.Stdout)
+	is.NoErr(err)
 	defer log.Stop()
 	const noOfMessages = 5
 	var counted = 0
@@ -167,11 +176,11 @@ func TestDumpMessages(t *testing.T) {
 		log.Errorf("Error message %d", i)
 		counted += 5
 	}
-	log.Flush()
+	err = log.Flush()
+	is.NoErr(err)
 	time.Sleep(defaultSleepTime) // Sleep a few ms while the logs get to the right place.
 	fmt.Printf("Generated %d messages\n", counted)
 	msgTrace := log.GetMessages(TraceLevel)
-	is := is.New(t)
 	verifyLogLevel(is, msgTrace, TraceLevel)
 	msgDebug := log.GetMessages(DebugLevel)
 	verifyLogLevel(is, msgDebug, DebugLevel)
@@ -191,7 +200,7 @@ func TestDumpMessages(t *testing.T) {
 
 }
 
-func verifyLogLevel(is *is.I, msgs []LogMessage, level LogLevel) {
+func verifyLogLevel(is *is2.I, msgs []LogMessage, level LogLevel) {
 	for _, m := range msgs {
 		is.True(m.LogLevel >= level) // Verifies that the log level is what we expect or higher
 	}
@@ -199,10 +208,12 @@ func verifyLogLevel(is *is.I, msgs []LogMessage, level LogLevel) {
 
 // TestDumpLimited tests overrunning the log buffer so we can make sure it is actually circular
 func TestDumpLimited(t *testing.T) {
+	is := is2.New(t)
 	const logBufferSize = 10
 	const logBufferOverrun = logBufferSize * 2
 	log := MakeLogger("", logBufferSize, testDefaultChanBufferSize)
-	log.RemoveWriter(os.Stdout)
+	err := log.RemoveWriter(os.Stdout)
+	is.NoErr(err)
 	defer log.Stop()
 	fmt.Printf("Generating %d trace messages...\n", logBufferSize)
 	for i := 0; i < logBufferSize; i++ {
@@ -212,10 +223,10 @@ func TestDumpLimited(t *testing.T) {
 	for i := 0; i < logBufferOverrun; i++ {
 		log.Infof("Info message %d", i)
 	}
-	log.Flush()
+	err = log.Flush()
+	is.NoErr(err)
 	msgs := log.GetMessages(InfoLevel)
 	fmt.Printf("Got %d messages from the log system\n", len(msgs))
-	is := is.New(t)
 	is.Equal(len(msgs), logBufferSize)
 	for i, m := range msgs {
 		is.Equal(fmt.Sprintf("Info message %d", i+logBufferSize), m.Message)
@@ -225,17 +236,18 @@ func TestDumpLimited(t *testing.T) {
 
 // Create a stream and do various verifications that it works.
 func TestStream(t *testing.T) {
+	is := is2.New(t)
 	const noOfMessages = 20
 	testLogger := MakeLogger("", testDefaultLogBufferSize, 0) // Use zero buffer to provoke races.
 	testLogger.SetLevel(TraceLevel)
-	testLogger.RemoveWriter(os.Stdout) // reduce console noise.
+	err := testLogger.RemoveWriter(os.Stdout) // reduce console noise.
+	is.NoErr(err)
 	defer testLogger.Stop()
 
 	// The ctx we pass into getstream to stop it.
 	streamCtx, streamCancel := context.WithCancel(context.Background())
 	stream := testLogger.GetStream(streamCtx)
 	streamedMessages := SafeInt{}
-	is := is.New(t)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func(streamCh chan LogMessage) {
@@ -253,7 +265,8 @@ func TestStream(t *testing.T) {
 	for i := 0; i < noOfMessages; i++ {
 		testLogger.Tracef("Trace message %d/%d", i, noOfMessages)
 	}
-	testLogger.Flush()
+	err = testLogger.Flush()
+	is.NoErr(err)
 	streamCancel()                                 // Cancel the stream. This should force the above goroutine to exit.
 	wg.Wait()                                      // Wait for the streamer to exit.
 	is.Equal(streamedMessages.Get(), noOfMessages) // Compare the number of messages stream to what we sent.
@@ -262,7 +275,8 @@ func TestStream(t *testing.T) {
 	for i := 0; i < noOfMessages; i++ {
 		testLogger.Infof("Messages not hitting the stream %d/%d", i, noOfMessages)
 	}
-	testLogger.Flush()
+	err = testLogger.Flush()
+	is.NoErr(err)
 	is.Equal(streamedMessages.Get(), noOfMessages) // Compare the number of messages stream to what we sent.
 	is.Equal(len(testLogger.GetMessages(InfoLevel)), noOfMessages)
 	fmt.Println("Stream test passed")
@@ -272,7 +286,7 @@ func TestStream(t *testing.T) {
 // detect if time out.
 // If we don't carefully write to channels this will cause a deadlock panic.
 func TestStreamBlocked(t *testing.T) {
-	is := is.New(t)
+	is := is2.New(t)
 	testLogger := MakeLogger("", 10, 0) // Unbuffered so we provoke races.
 	defer testLogger.Stop()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -304,12 +318,13 @@ func handleStream(stream chan LogMessage, counter *SafeInt, wg *sync.WaitGroup) 
 // Create a logger. Connect X stream to it. Log Y messages.
 // See that the number of messages reaching the streams is X * Y
 func TestMultipleStreams(t *testing.T) {
+	is := is2.New(t)
 	const noOfMessages = 20
 	const noOfStreams = 10
 	testLogger := MakeLogger("", testDefaultLogBufferSize, 0) // Use zero buffer to provoke races.
 	testLogger.SetLevel(TraceLevel)
-	testLogger.RemoveWriter(os.Stdout) // reduce console noise.
-
+	err := testLogger.RemoveWriter(os.Stdout) // reduce console noise.
+	is.NoErr(err)
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := sync.WaitGroup{}
 	counter := &SafeInt{}
@@ -320,16 +335,17 @@ func TestMultipleStreams(t *testing.T) {
 	for i := 0; i < noOfMessages; i++ {
 		testLogger.Trace("trace message")
 	}
-	testLogger.Flush()
+	err = testLogger.Flush()
+	is.NoErr(err)
 	time.Sleep(defaultSleepTime)
 	cancel()
 	wg.Wait() // Wait for the handleStream goroutines to finish.
-	is := is.New(t)
 	is.Equal(counter.Get(), noOfStreams*noOfMessages)
 	println("Done")
 }
 
 func TestStreamRace(t *testing.T) {
+	is := is2.New(t)
 	const noOfLoggers = 20
 	const noOfMessages = 100
 	wg := sync.WaitGroup{}
@@ -351,27 +367,16 @@ func TestStreamRace(t *testing.T) {
 			for j := 0; j < noOfMessages; j++ {
 				logger.Tracef("trace message")
 			}
-			logger.Flush()
+			err := logger.Flush()
+			is.NoErr(err)
 		}()
 	}
 	// We've pushed a lot of messages into the logger. Let's cancel the context.
 	cancel()
 	wg.Wait()
 
-	is := is.New(t)
 	is.True(messagesStreamed.Get() > 10)
 	fmt.Printf("\nNo of messages reaching the streams:%d\n", messagesStreamed.Get())
-}
-func TestQuit(t *testing.T) {
-	log := MakeLogger("", testDefaultLogBufferSize, testDefaultChanBufferSize)
-	time.Sleep(defaultSleepTime)
-	is := is.New(t)
-	log.Info("test message")
-	is.True(log.GetStatus()) // Goroutine should be running here.
-
-	log.Stop()
-	time.Sleep(defaultSleepTime)
-	is.True(!log.GetStatus()) // Goroutine should be stopped here.
 }
 
 func TestManyLoggers(t *testing.T) {
@@ -381,7 +386,7 @@ func TestManyLoggers(t *testing.T) {
 		logBufferSize     = 10
 	)
 	fmt.Printf("Running %d loggers with %d logbuffersize and %d messages per logger\n", noOfLoggers, logBufferSize, messagesPerLogger)
-	is := is.New(t)
+	is := is2.New(t)
 	loggers := make([]*CircularLogger, 10)
 
 	for i := 0; i < noOfLoggers; i++ {
@@ -410,7 +415,7 @@ func TestManyLoggers(t *testing.T) {
 
 func TestOutput(t *testing.T) {
 	testLogger := MakeLogger("", 10, 0)
-	is := is.New(t)
+	is := is2.New(t)
 	err := testLogger.RemoveWriter(os.Stdout)
 	is.NoErr(err)
 	err = testLogger.RemoveWriter(os.Stdout)
@@ -447,11 +452,11 @@ func useInterface(logger Logger) {
 }
 
 func TestInterface(t *testing.T) {
-
+	is := is2.New(t)
 	logger := MakeLogger("", 20, 0)
 	useInterface(logger)
-	logger.Flush()
+	err := logger.Flush()
+	is.NoErr(err)
 	msgs := logger.GetMessages(TraceLevel)
-	is := is.New(t)
 	is.Equal(len(msgs), 10)
 }

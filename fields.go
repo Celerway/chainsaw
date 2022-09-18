@@ -52,48 +52,37 @@ func (l *CircularLogger) formatFields(pairs []P) string {
 // formatPair takes a P and returns a string where "key=values"
 func (l *CircularLogger) formatPair(key string, value interface{}) string {
 	var valueFormatted string
-	switch value.(type) {
+	switch t := value.(type) {
 	case string:
-		valueFormatted = value.(string)
+		valueFormatted = t
 		if strings.Contains(valueFormatted, " ") {
 			valueFormatted = strconv.Quote(valueFormatted)
 		}
 	case int:
-		i := value.(int)
-		valueFormatted = strconv.FormatInt(int64(i), 10)
+		valueFormatted = strconv.FormatInt(int64(t), 10)
 	case int8:
-		i := value.(int64)
-		valueFormatted = strconv.FormatInt(int64(i), 10)
+		valueFormatted = strconv.FormatInt(int64(t), 10)
 	case int16:
-		i := value.(uint64)
-		valueFormatted = strconv.FormatInt(int64(i), 10)
+		valueFormatted = strconv.FormatInt(int64(t), 10)
 	case int32:
-		i := value.(uint64)
-		valueFormatted = strconv.FormatInt(int64(i), 10)
+		valueFormatted = strconv.FormatInt(int64(t), 10)
 	case int64:
-		i := value.(uint64)
-		valueFormatted = strconv.FormatInt(int64(i), 10)
+		valueFormatted = strconv.FormatInt(int64(t), 10)
 	case uint:
 		i := value.(uint)
 		valueFormatted = strconv.FormatInt(int64(i), 10)
 	case uint8:
-		i := value.(int64)
-		valueFormatted = strconv.FormatInt(int64(i), 10)
+		valueFormatted = strconv.FormatInt(int64(t), 10)
 	case uint16:
-		i := value.(uint64)
-		valueFormatted = strconv.FormatInt(int64(i), 10)
+		valueFormatted = strconv.FormatInt(int64(t), 10)
 	case uint32:
-		i := value.(uint64)
-		valueFormatted = strconv.FormatInt(int64(i), 10)
+		valueFormatted = strconv.FormatInt(int64(t), 10)
 	case uint64:
-		i := value.(uint64)
-		valueFormatted = strconv.FormatInt(int64(i), 10)
+		valueFormatted = strconv.FormatInt(int64(t), 10)
 	case float32:
-		f := value.(float32)
-		valueFormatted = fmt.Sprint(f)
+		valueFormatted = fmt.Sprint(t)
 	case float64:
-		f := value.(float64)
-		valueFormatted = fmt.Sprint(f)
+		valueFormatted = fmt.Sprint(t)
 	case time.Time:
 		ts := value.(time.Time)
 		valueFormatted = ts.Format(l.TimeFmt)

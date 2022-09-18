@@ -5,8 +5,6 @@ import (
 	"io"
 	"os"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -116,17 +114,12 @@ type CircularLogger struct {
 	current        int         // points to the current message in the circular buffer
 	logBufferSize  int         // the size of the circular buffer we use.
 	outputWriters  []io.Writer // List of io.Writers where the output gets copied.
-	running        atomicBool  // bool to indicate that the internal goroutine for the logger is running.
 	chanBufferSize int         // how big the channel buffer is. re-used when making streams.
 	TimeFmt        string      // format string for date. Default is "2006-01-02T15:04:05-0700"
 	fields         string      // pre-formatted set of fields. this gets included in every line.
 }
 
 func (l *CircularLogger) log(level LogLevel, message string, fields string) {
-	if !l.GetStatus() {
-		// If the logger is down we will deadlock quickly and nobody wants that.
-		panic("chainsaw panic: Logging goroutine is stopped")
-	}
 	t := time.Now()
 	logM := LogMessage{
 		Message:   message,
@@ -139,9 +132,7 @@ func (l *CircularLogger) log(level LogLevel, message string, fields string) {
 
 // channelHandler run whenever the logger has been used.
 // this is the main goroutine where everything happens
-func (l *CircularLogger) channelHandler(wg *sync.WaitGroup) {
-	l.running.Set(true)
-	wg.Done() // Signal back that the goroutine is running and the channel is serviced.
+func (l *CircularLogger) channelHandler() {
 	for {
 		select {
 		case cMessage := <-l.controlCh:
@@ -155,7 +146,6 @@ func (l *CircularLogger) channelHandler(wg *sync.WaitGroup) {
 			case ctrlRst:
 				cMessage.errChan <- l.handleReset()
 			case ctrlQuit:
-				l.running.Set(false)
 				cMessage.errChan <- nil
 				return // ends the goroutine.
 			case ctrlAddWriter:
@@ -326,18 +316,4 @@ func (l *CircularLogger) sendCtrlAndWait(ctrlMsg controlMessage) error {
 	ctrlMsg.errChan = errCh // mutate the struct a bit.
 	l.controlCh <- ctrlMsg
 	return <-errCh // Return the error returned by the logger goroutine.
-}
-
-type atomicBool struct{ flag int32 }
-
-func (b *atomicBool) Set(value bool) {
-	var i int32 = 0
-	if value {
-		i = 1
-	}
-	atomic.StoreInt32(&(b.flag), int32(i))
-}
-
-func (b *atomicBool) Get() bool {
-	return atomic.LoadInt32(&(b.flag)) != 0
 }
