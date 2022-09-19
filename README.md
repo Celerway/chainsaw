@@ -25,20 +25,30 @@ A field is a `Pair` consisting of a key, `string` and value, `interface{}`.
 You can choose to instantiate a logger. Doing this will allow you to set a
 name as well as to add some fields to the logger.
 #### without a logger instance.
-```go
-	chainsaw.Infof("Application %f starting up", version)
-	if err!= nil {
-        chainsaw.Fatal("Out of gloop")	
-    }
-	// with fields:
-	chainsaw.Infow("Can't open file",chainsaw.P{"file", file}, chainsaw.P{"err", err})
+```
+    package main
+    import "github.com/celerway/chainsaw"
+
+    func main() {
+		chainsaw.Infof("Application %f starting up", version)
+		err := checkGloop()
+		if err != nil {
+			chainsaw.Fatal("Out of gloop")
+		}
+		// with fields:
+		chainsaw.Infow("Can't open file", chainsaw.P{"file", file}, chainsaw.P{"err", err})
+	}
 ```
 #### with a logger instance.
-```go
+```
+    package main
+    import "github.com/celerway/chainsaw"
 
-    logger := chainsaw.MakeLogger("main")
-	logger.SetFields(chainsaw.P{"hostname", hostname})
-	logger.Error("Error in file:", err)
+    func main() {
+		logger := chainsaw.MakeLogger("main")
+		logger.SetFields(chainsaw.P{"hostname", hostname})
+		logger.Error("Error in file:", err)
+	}
 }
 ```
 

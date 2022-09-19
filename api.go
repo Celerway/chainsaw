@@ -41,6 +41,7 @@ func MakeLogger(name string, options ...int) *CircularLogger {
 		chanBufferSize: chanBufferSize,
 		outputWriters:  []io.Writer{os.Stdout},
 		TimeFmt:        "2006-01-02T15:04:05-0700",
+		backTraceLevel: TraceLevel,
 	}
 	go c.channelHandler()
 	runtime.Gosched()
@@ -112,12 +113,13 @@ func GetMessages(level LogLevel) []LogMessage {
 	return l.GetMessages(level)
 }
 
-// BackTrace logs messages from the current buffer to the log file.
-// This happens in one single write so it'll be continuous in the logs.
-// Todo: finish this. Needs to have formatting stuff done first, which needs the structured bits to work.
-func BackTrace() error {
+func SetBackTraceLevel(level LogLevel) {
+	l := defaultLogger
+	l.SetBackTraceLevel(level)
+}
 
-	return nil
+func (l *CircularLogger) SetBackTraceLevel(level LogLevel) {
+	l.backTraceLevel = level
 }
 
 // SetLevel sets the log level. This affects if messages are printed to
@@ -186,15 +188,15 @@ func GetLevels() []LogLevel {
 	return levels
 }
 
-func ParseLogLevel(s string) LogLevel {
-	level := InfoLevel
+func ParseLogLevel(s string) (LogLevel, error) {
 	s = strings.ToLower(s)
+	s = strings.TrimSuffix(s, "level")
 	for l := TraceLevel; l <= FatalLevel; l++ {
-		cmpLevel := strings.ToLower(l.String())
-		if cmpLevel == s {
-			level = l
-			break
+		s2 := strings.ToLower(l.String())
+		s2 = strings.TrimSuffix(s2, "level")
+		if s2 == s {
+			return l, nil
 		}
 	}
-	return level
+	return 0, fmt.Errorf("invalid log level: %s", s)
 }

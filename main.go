@@ -9,6 +9,8 @@ import (
 )
 
 //go:generate go run gen/main.go
+//go:generate  stringer -type=controlType
+//go:generate string -type=LogLevel
 const channelTimeout = time.Second
 
 var defaultLogger *CircularLogger
@@ -31,24 +33,6 @@ const (
 	FatalLevel
 )
 
-func (level LogLevel) String() string {
-	switch level {
-	case TraceLevel:
-		return "trace"
-	case DebugLevel:
-		return "debug"
-	case InfoLevel:
-		return "info"
-	case WarnLevel:
-		return "warn"
-	case ErrorLevel:
-		return "error"
-	case FatalLevel:
-		return "fatal"
-	}
-	return "unknown"
-}
-
 // init() runs when the library is imported. It will start a logger
 // so the library can be used without initializing a custom logger.
 func init() {
@@ -59,7 +43,7 @@ func init() {
 
 type controlType int
 
-// controlMessage struct describes the control message sent to the worker. This is a multi-purpose struct that
+// controlMessage struct describes the control message sent to the worker. This is a multipurpose struct that
 // allows you to do a number of operations.
 // - Add or remove new output channels
 // - Dump messages
@@ -67,7 +51,7 @@ type controlType int
 type controlMessage struct {
 	cType      controlType
 	returnChan chan []LogMessage // channel for dumps of messages
-	errChan    chan error        // Used for acks
+	errChan    chan error        // Used for acknowledgements
 	level      LogLevel
 	outputCh   chan LogMessage
 	newWriter  io.Writer
@@ -76,14 +60,23 @@ type controlMessage struct {
 type controlChannel chan controlMessage
 
 const (
+	// ctrlDump dump messages in the buffer
 	ctrlDump controlType = iota + 1
+	// ctrlRst resets the buffer, discarding any messages
 	ctrlRst
+	// ctrlQuit stops the worker goroutine
 	ctrlQuit
+	// ctrlAddOutputChan adds a new output channel
 	ctrlAddOutputChan
+	// ctrlRemoveOutputChan removes an output channel
 	ctrlRemoveOutputChan
+	// ctrlAddWriter adds a new io.Writer to the list of outputs
 	ctrlAddWriter
+	// ctrlRemoveWriter removes an io.Writer from the list of outputs
 	ctrlRemoveWriter
+	// ctrlSetLogLevel sets the log level
 	ctrlSetLogLevel
+	// ctrlFlush flushes the buffer to the outputs. also used to synchronize.
 	ctrlFlush
 )
 
@@ -101,7 +94,7 @@ type LogMessage struct {
 // CircularLogger is the struct holding a chainsaw instance.
 // All state within is private and should be access through methods.
 type CircularLogger struct {
-	name       string   // The name gets  into all the loglines when printed.
+	name       string   // The name gets  into all the log-lines when printed.
 	printLevel LogLevel // at what log level should messages be printed to stdout
 	// messages is the internal log buffer keeping the last messages in a circular buffer
 	messages []LogMessage
@@ -117,6 +110,7 @@ type CircularLogger struct {
 	chanBufferSize int         // how big the channel buffer is. re-used when making streams.
 	TimeFmt        string      // format string for date. Default is "2006-01-02T15:04:05-0700"
 	fields         string      // pre-formatted set of fields. this gets included in every line.
+	backTraceLevel LogLevel    // at what level should we trigger a backtrace? Default is TraceLevel, which disables this.
 }
 
 func (l *CircularLogger) log(level LogLevel, message string, fields string) {
@@ -128,6 +122,17 @@ func (l *CircularLogger) log(level LogLevel, message string, fields string) {
 		TimeStamp: t,
 	}
 	l.logCh <- logM
+	// trigger backtrace if level is high enough to triger it.
+	if l.backTraceLevel > TraceLevel && level >= l.backTraceLevel {
+		err := l.Flush()
+		if err != nil {
+			fmt.Printf("Error flushing: %s", err)
+		}
+		err = l.backTrace()
+		if err != nil {
+			fmt.Println("Chainsaw internal error getting backtrace: ", err)
+		}
+	}
 }
 
 // channelHandler run whenever the logger has been used.
@@ -244,6 +249,8 @@ func (l *CircularLogger) addOutputChan(ch logChan) error {
 	return nil
 }
 
+// removeOutputChan removes a channel from the list of output channels.
+// it will also close that channel.
 func (l *CircularLogger) removeOutputChan(ch logChan) error {
 	found := false
 	for i, outputCh := range l.outputChs {
@@ -289,7 +296,7 @@ func (l *CircularLogger) removeWriter(o io.Writer) error {
 	return nil
 }
 
-// getMessageOverCh is used by the internal goroutine to fetch loglines
+// getMessageOverCh is used by the internal goroutine to fetch log-lines
 // Perhaps it would be more efficient to stream these over a channel instead.
 // However, in terms of allocation this will do one big allocation and not many smaller ones.
 func (l *CircularLogger) getMessageOverCh(level LogLevel) []LogMessage {
@@ -316,4 +323,40 @@ func (l *CircularLogger) sendCtrlAndWait(ctrlMsg controlMessage) error {
 	ctrlMsg.errChan = errCh // mutate the struct a bit.
 	l.controlCh <- ctrlMsg
 	return <-errCh // Return the error returned by the logger goroutine.
+}
+
+// backTrace logs messages from the current buffer to the log file when a log message has a high enough
+// log level.
+// This happens in one single write, so it'll be continuous in the logs.
+func (l *CircularLogger) backTrace() error {
+	msgs := l.GetMessages(TraceLevel)
+	msgStrings := make([]string, len(msgs))
+	for _, msg := range msgs {
+		msgStrings = append(msgStrings, l.formatMessage(msg))
+	}
+	joined := strings.Join(msgStrings, "")
+	for _, w := range l.outputWriters {
+		_, _ = w.Write([]byte(l.formatMessage(l.traceMessage(true))))
+		_, err := w.Write([]byte(joined))
+		if err != nil {
+			return fmt.Errorf("writing to output writer: %w", err)
+		}
+		_, _ = w.Write([]byte(l.formatMessage(l.traceMessage(false))))
+	}
+	l.Reset() // Clear the logs.
+	return nil
+}
+
+func (l *CircularLogger) traceMessage(begin bool) LogMessage {
+	var msg string
+	if begin {
+		msg = "=== backtrace begins ==="
+	} else {
+		msg = "=== backtrace ends ==="
+	}
+	return LogMessage{
+		LogLevel:  l.backTraceLevel,
+		Message:   msg,
+		TimeStamp: time.Now(),
+	}
 }

@@ -162,33 +162,33 @@ func TestRemoveWriter(t *testing.T) {
 func TestDumpMessages(t *testing.T) {
 	is := is2.New(t)
 	const logBufferSize = 50
-	log := MakeLogger("", logBufferSize, testDefaultChanBufferSize)
-	err := log.RemoveWriter(os.Stdout)
+	logger := MakeLogger("", logBufferSize, testDefaultChanBufferSize)
+	err := logger.RemoveWriter(os.Stdout)
 	is.NoErr(err)
-	defer log.Stop()
+	defer logger.Stop()
 	const noOfMessages = 5
 	var counted = 0
 	for i := 0; i < noOfMessages; i++ {
-		log.Tracef("Trace message %d", i)
-		log.Debugf("Debug message %d", i)
-		log.Infof("Info message %d", i)
-		log.Warnf("Warn message %d", i)
-		log.Errorf("Error message %d", i)
+		logger.Tracef("Trace message %d", i)
+		logger.Debugf("Debug message %d", i)
+		logger.Infof("Info message %d", i)
+		logger.Warnf("Warn message %d", i)
+		logger.Errorf("Error message %d", i)
 		counted += 5
 	}
-	err = log.Flush()
+	err = logger.Flush()
 	is.NoErr(err)
 	time.Sleep(defaultSleepTime) // Sleep a few ms while the logs get to the right place.
 	fmt.Printf("Generated %d messages\n", counted)
-	msgTrace := log.GetMessages(TraceLevel)
+	msgTrace := logger.GetMessages(TraceLevel)
 	verifyLogLevel(is, msgTrace, TraceLevel)
-	msgDebug := log.GetMessages(DebugLevel)
+	msgDebug := logger.GetMessages(DebugLevel)
 	verifyLogLevel(is, msgDebug, DebugLevel)
-	msgInfo := log.GetMessages(InfoLevel)
+	msgInfo := logger.GetMessages(InfoLevel)
 	verifyLogLevel(is, msgInfo, InfoLevel)
-	msgWarn := log.GetMessages(WarnLevel)
+	msgWarn := logger.GetMessages(WarnLevel)
 	verifyLogLevel(is, msgWarn, WarnLevel)
-	msgError := log.GetMessages(ErrorLevel)
+	msgError := logger.GetMessages(ErrorLevel)
 	verifyLogLevel(is, msgWarn, WarnLevel)
 	is.Equal(len(msgTrace), noOfMessages*5) // Trace
 	is.Equal(len(msgDebug), noOfMessages*4) // Debug
@@ -211,21 +211,21 @@ func TestDumpLimited(t *testing.T) {
 	is := is2.New(t)
 	const logBufferSize = 10
 	const logBufferOverrun = logBufferSize * 2
-	log := MakeLogger("", logBufferSize, testDefaultChanBufferSize)
-	err := log.RemoveWriter(os.Stdout)
+	logger := MakeLogger("", logBufferSize, testDefaultChanBufferSize)
+	err := logger.RemoveWriter(os.Stdout)
 	is.NoErr(err)
-	defer log.Stop()
+	defer logger.Stop()
 	fmt.Printf("Generating %d trace messages...\n", logBufferSize)
 	for i := 0; i < logBufferSize; i++ {
-		log.Tracef("Trace message %d/%d", i, testDefaultLogBufferSize)
+		logger.Tracef("Trace message %d/%d", i, testDefaultLogBufferSize)
 	}
 	fmt.Printf("overrunning the buffer with %d more messages\n", logBufferSize)
 	for i := 0; i < logBufferOverrun; i++ {
-		log.Infof("Info message %d", i)
+		logger.Infof("Info message %d", i)
 	}
-	err = log.Flush()
+	err = logger.Flush()
 	is.NoErr(err)
-	msgs := log.GetMessages(InfoLevel)
+	msgs := logger.GetMessages(InfoLevel)
 	fmt.Printf("Got %d messages from the log system\n", len(msgs))
 	is.Equal(len(msgs), logBufferSize)
 	for i, m := range msgs {
