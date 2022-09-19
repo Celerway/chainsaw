@@ -1,16 +1,45 @@
 # Chainsaw, circular, structured logging
 
-This is a highly opinionated, structured logging library for Go. Opinions in a logging 
-framework are generally good, as logs should be uniform.
+This is a highly opinionated, structured logging library for Go.
 
 This logging library will keep the last N log messages around. This allows you to 
 dump the logs at trace or debug level if you encounter an error, contextualizing
 the error.
 
+As an example, say you're doing a database transaction. During this you'll pre-process some data, 
+prepare the transaction and then commit it. If the commit fails, you'll want to know what data was
+being processed, what the transaction looked like and what the error was. This library will keep
+the last N log messages around, so they can be dumped when you encounter an error.
+
+## Example
+```
+    func performTx() {
+		logger := chainsaw.NewLogger("database")
+		logger.SetBackTraceLevel(chainsaw.ErrorLevel) // will trigger a backtrace on error
+		log.Info("Preparing data")
+		data, err := prepareData()
+		// ...
+		log.Info("Committing transaction")
+		// ...
+		tx, err := commitTx()
+		if err != nil {
+			log.Error("Failed to commit transaction", err) // will dump the logs
+        }
+		// ...
+}
+```
+
 It also allows you to start a stream of log messages, making it suitable for 
-applications which have sub-applications where you might wanna look at different 
+applications which have sub-applications where you might want to look at different 
 streams of logs. Say in an application which has a bunch of goroutines which have
-more or less independent logs.
+more or less independent logs which you want to present live.
+
+There are two types of streams you can create. One in the form of a channel, which will deliver
+struct with log messages. The other is a stream of bytes, in the form of an io.Writer.
+
+Note that care should be taken to maintain these streams. If you don't read from the channel, or
+let the io.Writer write, it will lock up the package, likely taking your application down. Chainsaw tries to
+detect a dead stream channel and will log a warning and remove the channel from subsequent log messages.
 
 ## Fields
 
