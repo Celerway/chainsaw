@@ -39,7 +39,7 @@ func MakeLogger(name string, options ...int) *CircularLogger {
 		current:        0,
 		logBufferSize:  logBufferSize,
 		chanBufferSize: chanBufferSize,
-		outputWriters:  []io.Writer{os.Stdout},
+		outputWriters:  []io.Writer{os.Stderr},
 		TimeFmt:        "2006-01-02T15:04:05-0700",
 		backTraceLevel: TraceLevel,
 	}

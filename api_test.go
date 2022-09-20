@@ -58,7 +58,7 @@ func TestCircularLogger_BackTrace(t *testing.T) {
 	is := is2.New(t)
 
 	logger := MakeLogger("", 30, 10)
-	err := logger.RemoveWriter(os.Stdout)
+	err := logger.RemoveWriter(os.Stderr)
 	is.NoErr(err)
 	logger.SetBackTraceLevel(ErrorLevel)
 	logger.SetLevel(ErrorLevel)

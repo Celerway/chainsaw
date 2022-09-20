@@ -46,7 +46,7 @@ func TestLoggingPerformance(t *testing.T) {
 	const runs = 20000
 	const timeout = 3 * time.Millisecond
 	logger := MakeLogger("", testDefaultLogBufferSize, testDefaultChanBufferSize)
-	err := logger.RemoveWriter(os.Stdout) // Reduce noise.
+	err := logger.RemoveWriter(os.Stderr) // Reduce noise.
 	is.NoErr(err)
 	start := time.Now()
 	for i := 0; i < runs; i++ {
@@ -74,7 +74,7 @@ func TestLogging(t *testing.T) {
 	stringOutput := &stringLogger{}
 	err := logger.AddWriter(stringOutput)
 	is.NoErr(err)
-	err = logger.RemoveWriter(os.Stdout)
+	err = logger.RemoveWriter(os.Stderr)
 	is.NoErr(err)
 	logger.Trace("Trace", "concatenated")
 	logger.Tracef("Tracef message: %d", 1)
@@ -120,7 +120,7 @@ func TestRemoveWriter(t *testing.T) {
 	buffer := &SafeBuffer{}
 	err := AddWriter(buffer)
 	is.NoErr(err)
-	err = RemoveWriter(os.Stdout)
+	err = RemoveWriter(os.Stderr)
 	is.NoErr(err)
 	Trace("Trace message")
 	Tracef("Tracef message: %d", 1)
@@ -163,7 +163,7 @@ func TestDumpMessages(t *testing.T) {
 	is := is2.New(t)
 	const logBufferSize = 50
 	logger := MakeLogger("", logBufferSize, testDefaultChanBufferSize)
-	err := logger.RemoveWriter(os.Stdout)
+	err := logger.RemoveWriter(os.Stderr)
 	is.NoErr(err)
 	defer logger.Stop()
 	const noOfMessages = 5
@@ -212,7 +212,7 @@ func TestDumpLimited(t *testing.T) {
 	const logBufferSize = 10
 	const logBufferOverrun = logBufferSize * 2
 	logger := MakeLogger("", logBufferSize, testDefaultChanBufferSize)
-	err := logger.RemoveWriter(os.Stdout)
+	err := logger.RemoveWriter(os.Stderr)
 	is.NoErr(err)
 	defer logger.Stop()
 	fmt.Printf("Generating %d trace messages...\n", logBufferSize)
@@ -240,7 +240,7 @@ func TestStream(t *testing.T) {
 	const noOfMessages = 20
 	testLogger := MakeLogger("", testDefaultLogBufferSize, 0) // Use zero buffer to provoke races.
 	testLogger.SetLevel(TraceLevel)
-	err := testLogger.RemoveWriter(os.Stdout) // reduce console noise.
+	err := testLogger.RemoveWriter(os.Stderr) // reduce console noise.
 	is.NoErr(err)
 	defer testLogger.Stop()
 
@@ -323,7 +323,7 @@ func TestMultipleStreams(t *testing.T) {
 	const noOfStreams = 10
 	testLogger := MakeLogger("", testDefaultLogBufferSize, 0) // Use zero buffer to provoke races.
 	testLogger.SetLevel(TraceLevel)
-	err := testLogger.RemoveWriter(os.Stdout) // reduce console noise.
+	err := testLogger.RemoveWriter(os.Stderr) // reduce console noise.
 	is.NoErr(err)
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := sync.WaitGroup{}
@@ -416,9 +416,9 @@ func TestManyLoggers(t *testing.T) {
 func TestOutput(t *testing.T) {
 	testLogger := MakeLogger("", 10, 0)
 	is := is2.New(t)
-	err := testLogger.RemoveWriter(os.Stdout)
+	err := testLogger.RemoveWriter(os.Stderr)
 	is.NoErr(err)
-	err = testLogger.RemoveWriter(os.Stdout)
+	err = testLogger.RemoveWriter(os.Stderr)
 	is.True(err != nil)
 	fmt.Println("err as expected", err.Error())
 }
