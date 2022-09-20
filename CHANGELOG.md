@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.1.2](https://github.com/Celerway/chainsaw/compare/v1.1.1...v1.1.2) (2022-09-20)
+
+
+### Bug Fixes
+
+* fields from the logger were not added to messages. ([8611f0f](https://github.com/Celerway/chainsaw/commit/8611f0f5917d574d7c5f136f0476db33de4f4146))
+
 ### [1.1.1](https://github.com/Celerway/chainsaw/compare/v1.1.0...v1.1.1) (2022-09-20)
 
 
