@@ -32,6 +32,7 @@ func main() {
 	logFunctions := make([]LogFunction, 0)
 	for _, level := range myLevels {
 		lvlName := strings.Title(level.String())
+		lvlName = strings.TrimSuffix(lvlName, "Level")
 		fmt.Println("Level found", lvlName)
 		lf := LogFunction{Level: lvlName}
 		logFunctions = append(logFunctions, lf)

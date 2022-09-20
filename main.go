@@ -8,9 +8,11 @@ import (
 	"time"
 )
 
+// Code generation; the order matters, make sure to run the stringers first.
+//
+//go:generate stringer -type=controlType
+//go:generate stringer -type=LogLevel
 //go:generate go run gen/main.go
-//go:generate  stringer -type=controlType
-//go:generate string -type=LogLevel
 const channelTimeout = time.Second
 
 var defaultLogger *CircularLogger
@@ -115,14 +117,19 @@ type CircularLogger struct {
 
 func (l *CircularLogger) log(level LogLevel, message string, fields string) {
 	t := time.Now()
+	msgFields := l.fields
+	if len(fields) > 0 {
+		msgFields += " " + fields
+	}
 	logM := LogMessage{
 		Message:   message,
-		Fields:    fields,
+		Fields:    msgFields,
 		LogLevel:  level,
 		TimeStamp: t,
 	}
 	l.logCh <- logM
-	// trigger backtrace if level is high enough to triger it.
+	// trigger backtrace if level is high enough to trigger it.
+	// if backTraceLevel is set to TraceLevel, this is disabled.
 	if l.backTraceLevel > TraceLevel && level >= l.backTraceLevel {
 		err := l.Flush()
 		if err != nil {
@@ -303,6 +310,7 @@ func (l *CircularLogger) getMessageOverCh(level LogLevel) []LogMessage {
 	buf := make([]LogMessage, 0)
 	for i := l.current; i < l.current+l.logBufferSize; i++ {
 		msg := l.messages[i%l.logBufferSize]
+		// Add the fields from the logger:
 		if msg.LogLevel < level {
 			continue
 		}

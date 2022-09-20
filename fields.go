@@ -86,6 +86,8 @@ func (l *CircularLogger) formatPair(key string, value interface{}) string {
 	case time.Time:
 		ts := value.(time.Time)
 		valueFormatted = ts.Format(l.TimeFmt)
+	case error:
+		valueFormatted = value.(error).Error()
 	default:
 		valueFormatted = "[INVALID TYPE]"
 	}
