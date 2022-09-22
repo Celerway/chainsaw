@@ -206,8 +206,9 @@ func (l *CircularLogger) formatMessage(m LogMessage) string {
 			l.formatPair("logger", l.name))
 	}
 	// add level
+
 	output = append(output,
-		l.formatPair("level", m.LogLevel.String()))
+		l.formatPair("level", formatLevel(m.LogLevel.String())))
 	// add permanent fields from logger
 	if len(l.fields) > 0 {
 		output = append(output, l.fields)
@@ -219,6 +220,12 @@ func (l *CircularLogger) formatMessage(m LogMessage) string {
 	output = append(output, l.formatPair("message", m.Message))
 	outputStr := strings.Join(output, " ") + "\n"
 	return outputStr
+}
+
+func formatLevel(s string) string {
+	s = strings.TrimSuffix(s, "Level")
+	s = strings.ToLower(s)
+	return s
 }
 
 // handleLogOutput takes a message and spits it out on all available output
