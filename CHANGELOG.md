@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.1.4](https://github.com/Celerway/chainsaw/compare/v1.1.3...v1.1.4) (2022-09-22)
+
+
+### Bug Fixes
+
+* use short form of loglevel in the logs. So InfoLevel ==> info, etc. ([d5b7147](https://github.com/Celerway/chainsaw/commit/d5b7147c82e8ea4bdcb38816b47e344dc23300eb))
+
 ### [1.1.3](https://github.com/Celerway/chainsaw/compare/v1.1.2...v1.1.3) (2022-09-22)
 
 
