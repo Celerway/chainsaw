@@ -209,11 +209,8 @@ func (l *CircularLogger) formatMessage(m LogMessage) string {
 
 	output = append(output,
 		l.formatPair("level", formatLevel(m.LogLevel.String())))
-	// add permanent fields from logger
-	if len(l.fields) > 0 {
-		output = append(output, l.fields)
-	}
-	// add message specific fields:
+
+	// Add the fields that were passed in to this message:
 	if len(m.Fields) > 0 {
 		output = append(output, m.Fields)
 	}

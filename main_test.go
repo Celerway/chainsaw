@@ -460,3 +460,38 @@ func TestInterface(t *testing.T) {
 	msgs := logger.GetMessages(TraceLevel)
 	is.Equal(len(msgs), 10)
 }
+
+func TestFields0(t *testing.T) {
+	is := is2.New(t)
+	var err error
+	logger := MakeLogger("test", 20, 0)
+	logger.SetLevel(TraceLevel)
+	outputBuffer := bytes.NewBuffer(make([]byte, 0))
+	err = logger.RemoveWriter(os.Stderr)
+	is.NoErr(err)
+	err = logger.AddWriter(outputBuffer)
+	is.NoErr(err)
+	logger.SetFields(P{"field1", "value1"})
+	logger.Tracew("trace level message", P{"field2", "value2"})
+	logger.Debugw("debug level message", P{"field2", "value2"})
+	logger.Infow("info level message", P{"field2", "value2"})
+	logger.Warnw("warn level message", P{"field2", "value2"})
+	logger.Errorw("error level message", P{"field2", "value2"})
+
+	msgs := logger.GetMessages(TraceLevel) // implicit flush
+	is.Equal(len(msgs), 5)
+	for _, event := range msgs {
+		is.True(strings.Contains(event.Fields, "field1=value1"))
+		is.True(strings.Contains(event.Fields, "field2=value2"))
+	}
+	lines := 0
+	for _, line := range strings.Split(outputBuffer.String(), "\n") {
+		if len(line) == 0 {
+			continue
+		}
+		is.Equal(strings.Count(line, "field1=value1"), 1)
+		is.Equal(strings.Count(line, "field2=value2"), 1)
+		lines++
+	}
+	is.Equal(lines, 5)
+}
