@@ -196,7 +196,7 @@ func (l *CircularLogger) channelHandler() {
 }
 
 func (l *CircularLogger) formatMessage(m LogMessage) string {
-	output := make([]string, 5)
+	output := make([]string, 0)
 	// add time.
 	output = append(output,
 		l.formatPair("time", m.TimeStamp))
