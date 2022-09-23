@@ -495,3 +495,52 @@ func TestFields0(t *testing.T) {
 	}
 	is.Equal(lines, 5)
 }
+
+func TestBacktrace(t *testing.T) {
+	explevels := []string{"trace", "debug", "info", "error"}
+	is := is2.New(t)
+	var err error
+	logger := MakeLogger("test", 20, 0)
+	logger.SetLevel(TraceLevel)
+	logger.SetBackTraceLevel(WarnLevel)
+	outputBuffer := bytes.NewBuffer(make([]byte, 0))
+	err = logger.RemoveWriter(os.Stderr)
+	is.NoErr(err)
+	err = logger.AddWriter(outputBuffer)
+	is.NoErr(err)
+	logger.Trace("trace level message")
+	logger.Debug("debug level message")
+	logger.Info("info level message")
+	logger.Error("error level message")
+
+	logMsg := logger.GetMessages(TraceLevel)
+	is.Equal(len(logMsg), 0) // should have no messages, they have been flushed by the backtrace.
+	lines := strings.Split(outputBuffer.String(), "\n")
+	for i, explevel := range explevels {
+		fields := parseFields(lines[i])
+		fmt.Printf("line %d %+v: \n", i, fields)
+		is.Equal(fields["level"], explevel)
+	}
+	is.True(strings.Contains(lines[4], "begins"))
+	is.True(strings.Contains(lines[5], "trace"))
+	is.True(strings.Contains(lines[6], "debug"))
+	is.True(strings.Contains(lines[7], "info"))
+	is.True(strings.Contains(lines[8], "error"))
+	is.True(strings.Contains(lines[9], "ends"))
+	is.Equal(lines[10], "")
+	is.Equal(len(lines), 11) // 10 lines of logs + 1 blank line
+}
+
+// takes a string and returns a map[string]string of key value pairs
+// key and value are separated by '='
+// key value pairs are separated by ' '
+func parseFields(line string) map[string]string {
+	fields := make(map[string]string)
+	for _, field := range strings.Split(line, " ") {
+		kv := strings.Split(field, "=")
+		if len(kv) == 2 {
+			fields[kv[0]] = kv[1]
+		}
+	}
+	return fields
+}
