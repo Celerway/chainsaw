@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.2.0](https://github.com/Celerway/chainsaw/compare/v1.1.5...v1.2.0) (2022-10-27)
+
+
+### Features
+
+* add logger name to the backtrace begin and end fields. ([b7d47db](https://github.com/Celerway/chainsaw/commit/b7d47db9c4fe119f69c05168309a17b60d3d4bd7))
+
+
+### Bug Fixes
+
+* unit test for backtrace ([fccee8d](https://github.com/Celerway/chainsaw/commit/fccee8dd924f8bae9aec48e67f0a5ca0b432a838))
+
 ### [1.1.5](https://github.com/Celerway/chainsaw/compare/v1.1.4...v1.1.5) (2022-09-22)
 
 
