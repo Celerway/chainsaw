@@ -362,9 +362,9 @@ func (l *CircularLogger) backTrace() error {
 func (l *CircularLogger) traceMessage(begin bool) LogMessage {
 	var msg string
 	if begin {
-		msg = "=== backtrace begins ==="
+		msg = fmt.Sprintf("=== %s backtrace begins ===", l.name)
 	} else {
-		msg = "=== backtrace ends ==="
+		msg = fmt.Sprintf("=== %s backtrace ends ===", l.name)
 	}
 	return LogMessage{
 		LogLevel:  l.backTraceLevel,
