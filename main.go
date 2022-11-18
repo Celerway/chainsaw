@@ -116,6 +116,11 @@ type CircularLogger struct {
 }
 
 func (l *CircularLogger) log(level LogLevel, message string, fields string) {
+	// check if l is nil. This can happen if the user has not initialized a logger.
+	if l == nil {
+		fmt.Println("Chainsaw: This logger isn't initialized. Use default logger or initialize a new one.")
+		return
+	}
 	t := time.Now()
 	msgFields := l.fields
 	if len(fields) > 0 {

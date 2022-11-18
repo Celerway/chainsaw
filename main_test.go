@@ -40,6 +40,16 @@ func TestDemo(t *testing.T) {
 	logger.Stop()
 }
 
+func TestNilLogger(t *testing.T) {
+	var logger *CircularLogger
+	logger.Trace("This should not panic")
+	logger.Debugf("This should not panic either: %d", 1)
+	logger.Infow("This should not panic either", P{"test", 1})
+	logger.Warn("This should not panic either")
+	logger.Errorf("This should not panic either: %d", 1)
+	logger.Errorw("This should not panic either", P{"test", 1})
+}
+
 func TestLoggingPerformance(t *testing.T) {
 	is := is2.New(t)
 
