@@ -48,6 +48,8 @@ func TestNilLogger(t *testing.T) {
 	logger.Warn("This should not panic either")
 	logger.Errorf("This should not panic either: %d", 1)
 	logger.Errorw("This should not panic either", P{"test", 1})
+	logger.Println("This should not panic either")
+	logger.Printf("This should not panic either: %d", 1)
 }
 
 func TestLoggingPerformance(t *testing.T) {
@@ -119,7 +121,24 @@ func TestLogging(t *testing.T) {
 	is.True(strings.Contains(stringOutput.loglines[6], "Error concatenated"))
 	is.True(strings.Contains(stringOutput.loglines[7], "Errorf message: 1"))
 	is.True(strings.Contains(stringOutput.loglines[8], "errortest=5"))
+}
 
+func Test_Print(t *testing.T) {
+	logger := MakeLogger("", testDefaultLogBufferSize, testDefaultChanBufferSize)
+	defer logger.Stop()
+	is := is2.New(t)
+	stringOutput := &stringLogger{}
+	err := logger.AddWriter(stringOutput)
+	is.NoErr(err)
+	err = logger.RemoveWriter(os.Stderr)
+	is.NoErr(err)
+	logger.Println("Println message")
+	logger.Printf("Printf message: %d", 1)
+	err = logger.Flush()
+	is.NoErr(err)
+	is.Equal(len(stringOutput.loglines), 2)
+	is.True(stringOutput.contains("Println"))
+	is.True(stringOutput.contains("Printf message: 1"))
 }
 
 // TestRemoveWriter uses the default logger instance.

@@ -115,6 +115,21 @@ type CircularLogger struct {
 	backTraceLevel LogLevel    // at what level should we trigger a backtrace? Default is TraceLevel, which disables this.
 }
 
+func (l *CircularLogger) Printf(format string, v ...interface{}) {
+	l.log(InfoLevel, fmt.Sprintf(format, v...), "")
+}
+
+func (l *CircularLogger) Println(v ...interface{}) {
+	l.log(InfoLevel, fmt.Sprintln(v...), "")
+}
+
+func Printf(format string, v ...interface{}) {
+	defaultLogger.log(InfoLevel, fmt.Sprintf(format, v...), "")
+}
+func Println(v ...interface{}) {
+	defaultLogger.log(InfoLevel, fmt.Sprintln(v...), "")
+}
+
 func (l *CircularLogger) log(level LogLevel, message string, fields string) {
 	// check if l is nil. This can happen if the user has not initialized a logger.
 	if l == nil {
