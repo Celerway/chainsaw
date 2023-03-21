@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.3.1](https://github.com/Celerway/chainsaw/compare/v1.3.0...v1.3.1) (2023-03-21)
+
+
+### Bug Fixes
+
+* make the TestRemoveWriter use a fresh logger. ([4f36d0f](https://github.com/Celerway/chainsaw/commit/4f36d0f6dbbe3ea2164f50c649c1acea34140038))
+* set the default print level to whatever the default logger has. ([7477204](https://github.com/Celerway/chainsaw/commit/7477204c9f7c3407513ad33e8b625ed630aa99eb))
+
 ## [1.3.0](https://github.com/Celerway/chainsaw/compare/v1.2.1...v1.3.0) (2022-11-25)
 
 
