@@ -20,6 +20,7 @@ const (
 // In addition, you can supply two ints:
 // logBufferSize - the size of the circular buffer
 // chanBufferSize - how big the channels buffers should be
+// Note that the log level is fetched from the default logger.
 func MakeLogger(name string, options ...int) *CircularLogger {
 	logBufferSize := defaultLogBufferSize
 	chanBufferSize := defaultChanBufferSize
@@ -29,9 +30,17 @@ func MakeLogger(name string, options ...int) *CircularLogger {
 	if len(options) > 1 {
 		chanBufferSize = options[1]
 	}
+
+	var printLevel LogLevel
+	if defaultLogger != nil {
+		printLevel = defaultLogger.printLevel
+	} else {
+		printLevel = InfoLevel
+	}
+
 	c := CircularLogger{
 		name:           name,
-		printLevel:     InfoLevel, // this is the default printlevel.
+		printLevel:     printLevel,
 		messages:       make([]LogMessage, logBufferSize),
 		logCh:          make(logChan, chanBufferSize),
 		outputChs:      make([]logChan, 0),
